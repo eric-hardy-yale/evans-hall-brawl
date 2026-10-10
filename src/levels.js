@@ -1,10 +1,10 @@
 // The two floors the player can be on, and the stairwells that connect them.
-import { STAIRS, SPAWN, collide, floorAt, locate } from './layout.js'
-import { SPAWN1, collide1, floorAt1, locate1 } from './ground.js'
+import { COLLIDERS, STAIRS, SPAWN, collide, floorAt, locate } from './layout.js'
+import { COLLIDERS1, SPAWN1, collide1, floorAt1, locate1 } from './ground.js'
 
 export const LEVELS = {
-  1: { collide: collide1, floorAt: floorAt1, locate: locate1, spawn: SPAWN1 },
-  2: { collide, floorAt, locate, spawn: SPAWN },
+  1: { collide: collide1, floorAt: floorAt1, locate: locate1, spawn: SPAWN1, colliders: COLLIDERS1 },
+  2: { collide, floorAt, locate, spawn: SPAWN, colliders: COLLIDERS },
 }
 
 // each stair core has one opening (with the painting above it) facing `face`.

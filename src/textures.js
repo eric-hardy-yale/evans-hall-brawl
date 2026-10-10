@@ -503,3 +503,64 @@ export function restroomTex() {
   g.fillText('Restroom', 64, 150)
   return tex(c)
 }
+
+// blood splatter decal on a transparent background: lumpy core, satellite drops, and streaks
+// thrown out in one direction (variants via seed)
+export function splatTex(seed = 1) {
+  const [c, g] = canvas(256, 256)
+  const r = rng(500 + seed * 17)
+  const col = () => `rgb(${110 + Math.floor(r() * 40)}, ${Math.floor(r() * 10)}, ${Math.floor(r() * 10)})`
+  const blob = (cx, cy, rad, lumps) => {
+    g.beginPath()
+    const n = 18 + Math.floor(r() * 10)
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2
+      const k = rad * (1 - lumps / 2 + r() * lumps)
+      const x = cx + Math.cos(a) * k
+      const y = cy + Math.sin(a) * k
+      i ? g.lineTo(x, y) : g.moveTo(x, y)
+    }
+    g.closePath()
+    g.fill()
+  }
+  const throwDir = r() * Math.PI * 2
+  g.fillStyle = col()
+  blob(128, 128, 34 + r() * 18, 0.7)
+  for (let i = 0; i < 5; i++) blob(128 + (r() - 0.5) * 50, 128 + (r() - 0.5) * 50, 10 + r() * 16, 0.8)
+  // streaks with a drop at the end, mostly along the throw direction
+  for (let i = 0; i < 12; i++) {
+    const a = throwDir + (r() - 0.5) * (i < 8 ? 1.2 : 6)
+    const len = 40 + r() * 75
+    const w = 2 + r() * 5
+    g.fillStyle = col()
+    g.save()
+    g.translate(128, 128)
+    g.rotate(a)
+    g.beginPath()
+    g.moveTo(20, -w)
+    g.quadraticCurveTo(len * 0.6, -w * 0.4, len, 0)
+    g.quadraticCurveTo(len * 0.6, w * 0.4, 20, w)
+    g.fill()
+    g.beginPath()
+    g.arc(len, 0, w * (0.8 + r()), 0, Math.PI * 2)
+    g.fill()
+    g.restore()
+  }
+  // fine mist of droplets
+  for (let i = 0; i < 70; i++) {
+    const a = throwDir + (r() - 0.5) * 2.4
+    const d = 45 + r() * 80
+    g.fillStyle = col()
+    g.beginPath()
+    g.arc(128 + Math.cos(a) * d, 128 + Math.sin(a) * d, 0.8 + r() * 3.2, 0, Math.PI * 2)
+    g.fill()
+  }
+  // wet highlight
+  g.globalAlpha = 0.18
+  g.fillStyle = '#ff8a8a'
+  blob(118, 118, 12, 0.6)
+  g.globalAlpha = 1
+  const t = tex(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}

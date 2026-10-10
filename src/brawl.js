@@ -4,5 +4,3 @@ export const BRAWL = { on: false }
 
 export const toggleBrawl = () => (BRAWL.on = !BRAWL.on)
 
-// live world positions of the animated Labubus, so each can turn toward the nearest one
-export const FIGHTERS = new Set()

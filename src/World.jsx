@@ -12,6 +12,7 @@ import LabubuCrowd from './LabubuCrowd.jsx'
 import Faculty from './Faculty.jsx'
 import HandsomeDan from './HandsomeDan.jsx'
 import GroundFloor from './GroundFloor.jsx'
+import BrawlFx from './BrawlFx.jsx'
 import { COURT_TABLES, COURT_TREES, G, H1 } from './ground.js'
 import { COURSE_KEYS } from './slides.js'
 import { BOX, Instanced, Plane, SPHERE, ribbon, slideMat, wallItems } from './parts.jsx'
@@ -481,6 +482,7 @@ export default function World() {
       <LabubuCrowd />
       <Faculty />
       <HandsomeDan />
+      <BrawlFx />
     </>
   )
 }

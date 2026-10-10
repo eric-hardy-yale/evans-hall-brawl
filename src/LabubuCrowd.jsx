@@ -1,12 +1,16 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { BRAWL } from './brawl.js'
+import { addAgent, removeAgent } from './brawlSim.js'
+import { poseAt } from './brawlPoses.js'
+import { splatTex } from './textures.js'
 import * as THREE from 'three'
 import { EXPRESSIONS, G, SKIN, YALE_BLUE, faceTex, furTex, shirtTex } from './Labubu.jsx'
 import { CHAIRS, DRUMS } from './layout.js'
 
 // ~30 seated Labubu students per classroom, drawn with a handful of instanced meshes
-// (one per body part) so hundreds of them stay cheap.
+// (one per body part) so hundreds of them stay cheap. In brawl mode each one becomes a
+// brawlSim agent and is re-posed every frame from animation cycles baked per outfit.
 const STUDENTS_PER_ROOM = 30
 const HEIGHT = 0.95
 const FURS = ['#5a3d2e', '#d9c2a0', '#ff8fc7', '#9fe0c6', '#b9a5e6', '#8d8d93', '#f2efe9', '#f2a65a', '#7fb2ff', '#2b2b2e', '#c98f6b', '#e6d36b']
@@ -23,7 +27,6 @@ const V = new THREE.Vector3()
 const S = new THREE.Vector3()
 const Q = new THREE.Quaternion()
 const E = new THREE.Euler()
-const EY = new THREE.Euler(0, 0, 0, 'YXZ') // yaw first, then lean in the figure's own frame
 const M = (p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1]) => new THREE.Matrix4().compose(V.set(...p), Q.setFromEuler(E.set(...r)), S.set(...s))
 const mul = (...ms) => ms.reduce((a, b) => a.clone().multiply(b))
 
@@ -61,56 +64,74 @@ export const STUDENTS = DRUMS.flatMap((d, di) =>
   ),
 )
 
-// brawl poses (see Labubu.jsx): wind up, stab, recoil. Pose 0 is sitting nicely.
-const POSES = [
-  null,
-  { armX: -2.8, lean: -0.12, fwd: 0 },
-  { armX: -1.45, lean: 0.28, fwd: 0.06 },
-  { armX: -0.6, lean: 0.05, fwd: 0 },
-]
-const HIDE = new THREE.Matrix4().makeScale(0, 0, 0)
+// ---------- parts: the same list, in the same order, for every pose of a given outfit
+// pose = null → sitting in the chair; otherwise a standing pose from brawlPoses.poseAt.
+const T = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z)
+const R = (x, y, z) => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(x, y, z))
+const Sc = (x, y, z) => new THREE.Matrix4().makeScale(x, y, z)
 
-// local part transforms for a seated Labubu (same layout as Labubu.jsx).
-// Every pose emits the same parts in the same order; the knife and splatter are just hidden in pose 0.
-function partsFor(s, pose) {
+function partsFor(tpl, pose) {
   const out = []
-  const add = (bucket, m, color) => out.push({ bucket, m, color })
-  const fur = s.fur
-  const legM = s.pants ? 0.078 : 0.07
+  const add = (bucket, m, color, tag) => out.push({ bucket, m, color, tag })
+  const { pants, shirtBucket, plainShirt } = tpl
+  const legM = pants ? 0.078 : 0.07
+  const body = pose ? mul(T(0, pose.bob, 0), R(pose.lean, 0, 0), Sc(1, pose.crouch, 1)) : new THREE.Matrix4()
+  const at = (m) => mul(body, m)
   for (const x of [-0.085, 0.085]) {
-    add(s.pants ? 'cyl' : 'furCyl', M([x, 0.15, 0.12], [Math.PI / 2, 0, 0], [legM, 0.2, legM]), s.pants || fur)
-    add('skin', M([x, 0.17, 0.23], [0, 0, 0], [0.065, 0.09, 0.035]))
-  }
-  add('fur', M([0, 0.34, 0], [0, 0, 0], [0.2, 0.23, 0.18]), fur)
-  if (s.pants) add('cyl', M([0, 0.22, 0], [0, 0, 0], [0.19, 0.12, 0.17]), s.pants)
-  const shirtBucket = s.shirt === 'yale' ? 'shirtYale' : s.shirt === 'stripes' ? 'shirtStripes' : s.shirt === 'plain' ? 'shirtPlain' : null
-  if (shirtBucket) add(shirtBucket, M([0, 0.39, 0], [0, 0, 0], [0.207, 0.22, 0.188]), s.shirtColor)
-  for (const side of [1, -1]) {
-    const shoulder = !pose
-      ? M([0.17 * side, 0.47, 0], [0.25, 0, 0.35 * side])
-      : side < 0
-        ? M([0.17 * side, 0.47, 0], [pose.armX, 0, -0.3])
-        : M([0.17 * side, 0.47, 0], [-0.9, 0, 0.9]) // guard up
-    add('furLimb', mul(shoulder, M([0, -0.09, 0], [0, 0, 0], [0.045, 0.06, 0.045])), fur)
-    if (shirtBucket) add(shirtBucket === 'shirtPlain' ? 'cyl' : 'sleeve' + shirtBucket.slice(5), mul(shoulder, M([0, -0.04, 0], [0, 0, 0], [0.056, 0.07, 0.056])), s.shirt === 'plain' ? s.shirtColor : undefined)
-    add('skin', mul(shoulder, M([0, -0.18, 0.01], [0, 0, 0], [0.04, 0.045, 0.035])))
-    if (side < 0) {
-      add('dark', pose ? mul(shoulder, M([0, -0.21, 0.02], [0, 0, 0], [0.024, 0.07, 0.024])) : HIDE)
-      add('blade', pose ? mul(shoulder, M([0, -0.32, 0.02], [0, 0, 0], [0.012, 0.15, 0.032])) : HIDE)
+    if (!pose) {
+      add(pants ? 'cyl' : 'furCyl', M([x, 0.15, 0.12], [Math.PI / 2, 0, 0], [legM, 0.2, legM]), pants ? 'pants' : 'fur')
+      add('skin', M([x, 0.17, 0.23], [0, 0, 0], [0.065, 0.09, 0.035]))
+    } else {
+      const hip = mul(T(x, 0.21, 0), R(x > 0 ? pose.legL : pose.legR, 0, 0))
+      add(pants ? 'cyl' : 'furCyl', at(mul(hip, T(0, -0.09, 0), Sc(legM, 0.18, legM))), pants ? 'pants' : 'fur')
+      add('skin', at(mul(hip, T(0, -0.18, 0.03), Sc(0.065, 0.035, 0.09))))
     }
   }
-  for (const b of [[0.07, 0.4, 0.17, 0.07, 0.05], [-0.05, 0.3, 0.17, 0.04, 0.06], [-0.09, 0.66, 0.22, 0.045, 0.03]])
-    add('blood', pose ? M([b[0], b[1], b[2]], [0, 0, 0], [b[3], b[4], 0.02]) : HIDE)
-  const head = M([0, 0.7, 0])
-  add('fur', mul(head, M([0, 0, 0], [0, 0, 0], [0.27, 0.25, 0.25])), fur)
-  add('face-' + s.expression, mul(head, M([0, -0.02, 0.012], [0, 0, 0], [0.245, 0.235, 0.255])))
+  add('fur', at(M([0, 0.34, 0], [0, 0, 0], [0.2, 0.23, 0.18])), 'fur')
+  if (pants) add('cyl', at(M([0, 0.22, 0], [0, 0, 0], [0.19, 0.12, 0.17])), 'pants')
+  if (shirtBucket) add(shirtBucket, at(M([0, 0.39, 0], [0, 0, 0], [0.207, 0.22, 0.188])), 'shirt')
+  for (const side of [1, -1]) {
+    const arm = pose ? (side > 0 ? pose.armL : pose.armR) : null
+    const shoulder = at(pose ? mul(T(0.17 * side, 0.47, 0), R(arm[0], 0, arm[1])) : M([0.17 * side, 0.47, 0], [0.25, 0, 0.35 * side]))
+    add('furLimb', mul(shoulder, M([0, -0.09, 0], [0, 0, 0], [0.045, 0.06, 0.045])), 'fur')
+    if (shirtBucket) add(plainShirt ? 'cyl' : 'sleeve' + shirtBucket.slice(5), mul(shoulder, M([0, -0.04, 0], [0, 0, 0], [0.056, 0.07, 0.056])), plainShirt ? 'shirt' : null)
+    add('skin', mul(shoulder, M([0, -0.18, 0.01], [0, 0, 0], [0.04, 0.045, 0.035])))
+    if (side < 0) {
+      add('dark', mul(shoulder, M([0, -0.21, 0.02], [0, 0, 0], [0.024, 0.07, 0.024])), null, 'knife')
+      add('blade', mul(shoulder, M([0, -0.32, 0.02], [0, 0, 0], [0.012, 0.15, 0.032])), null, 'knife')
+    }
+  }
+  const head = at(M([0, 0.7, 0]))
+  add('fur', mul(head, M([0, 0, 0], [0, 0, 0], [0.27, 0.25, 0.25])), 'fur')
+  add('face', mul(head, M([0, -0.02, 0.012], [0, 0, 0], [0.245, 0.235, 0.255])))
   for (const side of [-1, 1]) {
     const ear = mul(head, M([0.115 * side, 0.27, -0.02], [0, 0, -0.14 * side]))
-    add('fur', mul(ear, M([0, 0, 0], [0, 0, 0], [0.075, 0.17, 0.05])), fur)
+    add('fur', mul(ear, M([0, 0, 0], [0, 0, 0], [0.075, 0.17, 0.05])), 'fur')
     add('skin', mul(ear, M([0, -0.01, 0.03], [0, 0, 0], [0.042, 0.12, 0.025])))
     add('dark', mul(ear, M([0, -0.02, 0.05], [0, 0, 0], [0.012, 0.055, 0.008])))
   }
+  // splatter decals (shown as the agent gets bloodier): chest, belly, face
+  add('splat', at(M([0.05, 0.42, 0.195], [0, 0, 0.6], [0.2, 0.2, 1])), null, 'blood0')
+  add('splat', at(M([-0.07, 0.28, 0.185], [0, 0, 2.2], [0.16, 0.16, 1])), null, 'blood1')
+  add('splat', mul(head, M([-0.07, -0.04, 0.262], [0, 0, 4.1], [0.13, 0.13, 1])), null, 'blood2')
   return out
+}
+
+// baked frames per animation; more frames for faster motion so it stays smooth
+const FRAMES = { idle: 8, walk: 20, run: 20, stab: 32, cower: 10 }
+const templateCache = new Map()
+function template(person) {
+  const shirtBucket = person.shirt === 'yale' ? 'shirtYale' : person.shirt === 'stripes' ? 'shirtStripes' : person.shirt === 'plain' ? 'shirtPlain' : null
+  const tpl = { pants: !!person.pants, shirtBucket, plainShirt: person.shirt === 'plain' }
+  const key = `${tpl.pants}-${shirtBucket}`
+  if (!templateCache.has(key)) {
+    const sit = partsFor(tpl, null)
+    const anims = Object.fromEntries(
+      Object.entries(FRAMES).map(([anim, n]) => [anim, Array.from({ length: n }, (_, i) => partsFor(tpl, poseAt(anim, i / n)).map((p) => p.m))]),
+    )
+    templateCache.set(key, { parts: sit, sit: sit.map((p) => p.m), anims })
+  }
+  return templateCache.get(key)
 }
 
 function buckets() {
@@ -118,6 +139,7 @@ function buckets() {
   const furM = std({ color: '#ffffff', map: furTex(), bumpMap: furTex(), bumpScale: 2, roughness: 1 })
   const plain = std({ color: '#ffffff', roughness: 0.85 })
   const sleeveGeo = G.cyl
+  const splatGeo = new THREE.PlaneGeometry(1, 1)
   const b = {
     fur: [G.sphere, furM, true],
     furLimb: [G.limb, furM, true],
@@ -131,115 +153,89 @@ function buckets() {
     sleeveYale: [sleeveGeo, std({ color: YALE_BLUE, roughness: 0.85 }), false],
     sleeveStripes: [sleeveGeo, std({ map: shirtTex('stripes'), roughness: 0.85 }), false],
     blade: [G.box, std({ color: '#d7dde4', metalness: 0.9, roughness: 0.2 }), false],
-    blood: [G.sphere, std({ color: '#8f0a0a', roughness: 0.25, metalness: 0.1 }), false],
-    puddle: [G.cyl, std({ color: '#7a0808', roughness: 0.2, metalness: 0.1 }), false],
+    splat: [splatGeo, std({ map: splatTex(9), transparent: true, alphaTest: 0.35, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }), false],
   }
   for (const e of EXPRESSIONS) b['face-' + e] = [G.face, std({ map: faceTex(e), roughness: 0.5 }), false]
   return b
 }
 
-const Bucket = ({ geo, mat, items, tinted, meshRef }) => {
+function Bucket({ geo, mat, count, colors, meshRef }) {
   useLayoutEffect(() => {
+    if (!colors) return
     const c = new THREE.Color()
-    items.forEach((it, i) => {
-      meshRef.current.setMatrixAt(i, it.m)
-      if (tinted) meshRef.current.setColorAt(i, c.set(it.color || '#ffffff'))
-    })
-    meshRef.current.instanceMatrix.needsUpdate = true
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
-  }, [items, tinted, meshRef])
-  return <instancedMesh ref={meshRef} args={[geo, mat, items.length]} frustumCulled={false} />
+    colors.forEach((col, i) => meshRef.current.setColorAt(i, c.set(col || '#ffffff')))
+    meshRef.current.instanceColor.needsUpdate = true
+  }, [colors, meshRef])
+  return <instancedMesh ref={meshRef} args={[geo, mat, count]} frustumCulled={false} />
 }
 
-// yaw toward the nearest neighbor (the brawl partner), or the chair's own direction if alone
-function partnerYaw(people, i) {
-  const s = people[i]
-  let best = null
-  let bd = 3
-  for (let j = 0; j < people.length; j++) {
-    if (j === i) continue
-    const d = Math.hypot(people[j].x - s.x, people[j].z - s.z)
-    if (d < bd && Math.abs(people[j].y - s.y) < 1) {
-      bd = d
-      best = people[j]
-    }
-  }
-  return best ? Math.atan2(best.x - s.x, best.z - s.z) : s.rot
-}
+const ROOT = new THREE.Matrix4()
+const TMP = new THREE.Matrix4()
+const ZERO = new Float32Array(16)
+const QY = new THREE.Quaternion()
+const UP = new THREE.Vector3(0, 1, 0)
 
 export default function LabubuCrowd({ people = STUDENTS }) {
   const built = useMemo(() => {
     const defs = buckets()
-    const keys = Object.keys(defs)
-    // per pose, per bucket: the instance matrices; plus where each person's parts live
-    const lists = POSES.map(() => Object.fromEntries(keys.map((k) => [k, []])))
-    const slots = people.map(() => [])
-    const phases = []
-    people.forEach((s, i) => {
-      const yaw = partnerYaw(people, i)
-      phases.push(((i * 0.6180339) % 1) + 0.1 * (i % 3))
-      POSES.forEach((pose, p) => {
-        const root = pose
-          ? new THREE.Matrix4().compose(
-              V.set(s.x + Math.sin(yaw) * pose.fwd, s.y, s.z + Math.cos(yaw) * pose.fwd),
-              Q.setFromEuler(EY.set(pose.lean, yaw, 0)),
-              S.set(HEIGHT, HEIGHT, HEIGHT),
-            )
-          : M([s.x, s.y, s.z], [0, s.rot, 0], [HEIGHT, HEIGHT, HEIGHT])
-        for (const part of partsFor(s, pose)) {
-          if (p === 0) slots[i].push([part.bucket, lists[0][part.bucket].length])
-          lists[p][part.bucket].push({ m: part.m === HIDE ? HIDE : mul(root, part.m), color: part.color })
-        }
-        // a puddle on the floor in front of the seat
-        if (p === 0) slots[i].push(['puddle', lists[0].puddle.length])
-        lists[p].puddle.push({
-          m: pose ? M([s.x + Math.sin(yaw) * 0.45, s.floorY + 0.012, s.z + Math.cos(yaw) * 0.45], [0, yaw, 0], [0.38, 0.004, 0.3]) : HIDE,
-        })
+    const counts = Object.fromEntries(Object.keys(defs).map((k) => [k, 0]))
+    const colors = Object.fromEntries(Object.keys(defs).map((k) => [k, []]))
+    const persons = people.map((s) => {
+      const tpl = template(s)
+      const slots = tpl.parts.map((p) => {
+        const bucket = p.bucket === 'face' ? 'face-' + s.expression : p.bucket
+        const color = p.color === 'fur' ? s.fur : p.color === 'pants' ? s.pants : p.color === 'shirt' ? s.shirtColor : undefined
+        colors[bucket].push(color)
+        return { bucket, index: counts[bucket]++, tag: p.tag }
       })
+      return { s, tpl, slots }
     })
-    const used = keys.filter((k) => lists[0][k].length)
-    const mats = POSES.map((_, p) =>
-      Object.fromEntries(
-        used.map((k) => {
-          const arr = new Float32Array(lists[p][k].length * 16)
-          lists[p][k].forEach((it, j) => it.m.toArray(arr, j * 16))
-          return [k, arr]
-        }),
-      ),
-    )
-    const groups = used.map((k) => {
-      const [geo, mat, tinted] = defs[k]
-      return { k, geo, mat, tinted, items: lists[0][k], ref: { current: null } }
-    })
-    return { groups, mats, slots, phases }
+    const groups = Object.keys(defs)
+      .filter((k) => counts[k])
+      .map((k) => ({ k, geo: defs[k][0], mat: defs[k][1], count: counts[k], colors: defs[k][2] ? colors[k] : null, ref: { current: null } }))
+    return { persons, groups }
   }, [people])
 
-  // swap each person between the 4 precomputed poses; only changed people get rewritten
-  const current = useRef(null)
-  useFrame(({ clock }) => {
-    const { groups, mats, slots, phases } = built
-    if (!current.current || current.current.length !== slots.length) current.current = new Int8Array(slots.length)
-    const cur = current.current
-    const meshes = Object.fromEntries(groups.map((g) => [g.k, g.ref.current]))
-    const dirty = new Set()
-    const t = clock.elapsedTime
-    for (let i = 0; i < slots.length; i++) {
-      let pose = 0
-      if (BRAWL.on) {
-        const u = (t * 1.3 + phases[i]) % 1
-        pose = u < 0.55 ? 1 : u < 0.72 ? 2 : 3
+  // one brawl agent per person, starting from their seat
+  useEffect(() => {
+    const agents = built.persons.map(({ s }) => {
+      const level = s.floorY < -2.5 ? 1 : 2
+      return addAgent({ x: s.x, y: s.floorY, z: s.z, yaw: s.rot, level })
+    })
+    built.persons.forEach((p, i) => (p.agent = agents[i]))
+    return () => agents.forEach(removeAgent)
+  }, [built])
+
+  const seated = useRef(false)
+  useFrame(() => {
+    const { persons, groups } = built
+    if (!BRAWL.on && seated.current) return
+    const arrays = Object.fromEntries(groups.map((g) => [g.k, g.ref.current?.instanceMatrix.array]))
+    for (const { s, tpl, slots, agent: a } of persons) {
+      let frame
+      if (BRAWL.on && a) {
+        const anim = tpl.anims[a.anim] || tpl.anims.idle
+        frame = anim[Math.floor(a.phase * anim.length) % anim.length]
+        QY.setFromAxisAngle(UP, a.yaw)
+        ROOT.compose(V.set(a.x, a.y, a.z), QY, S.set(HEIGHT, HEIGHT, HEIGHT))
+      } else {
+        frame = tpl.sit
+        ROOT.compose(V.set(s.x, s.y, s.z), QY.setFromAxisAngle(UP, s.rot), S.set(HEIGHT, HEIGHT, HEIGHT))
       }
-      if (pose === cur[i]) continue
-      cur[i] = pose
-      for (const [k, j] of slots[i]) {
-        const mesh = meshes[k]
-        if (!mesh) continue
-        mesh.instanceMatrix.array.set(mats[pose][k].subarray(j * 16, j * 16 + 16), j * 16)
-        dirty.add(mesh)
+      const armed = BRAWL.on && a?.armed
+      const blood = BRAWL.on && a ? a.blood : 0
+      for (let j = 0; j < slots.length; j++) {
+        const { bucket, index, tag } = slots[j]
+        const arr = arrays[bucket]
+        if (!arr) continue
+        const hidden = (tag === 'knife' && !armed) || (tag && tag.startsWith('blood') && blood <= +tag[5])
+        if (hidden) arr.set(ZERO, index * 16)
+        else TMP.multiplyMatrices(ROOT, frame[j]).toArray(arr, index * 16)
       }
     }
-    for (const m of dirty) m.instanceMatrix.needsUpdate = true
+    for (const g of groups) if (g.ref.current) g.ref.current.instanceMatrix.needsUpdate = true
+    seated.current = !BRAWL.on
   })
 
-  return built.groups.map((g) => <Bucket key={g.k} geo={g.geo} mat={g.mat} items={g.items} tinted={g.tinted} meshRef={g.ref} />)
+  return built.groups.map((g) => <Bucket key={g.k} geo={g.geo} mat={g.mat} count={g.count} colors={g.colors} meshRef={g.ref} />)
 }

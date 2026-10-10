@@ -2,6 +2,8 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { BRAWL } from './brawl.js'
+import { poseAt } from './brawlPoses.js'
+import { splatTex } from './textures.js'
 
 // Cartoon wizard professors built from primitives. Each preset sets robe, hair, beard, hat,
 // glasses, size, and a prop; the shared body handles the robe, head, arms and wand.
@@ -20,6 +22,10 @@ const BOX = new THREE.BoxGeometry(1, 1, 1)
 const TORUS = new THREE.TorusGeometry(1, 0.12, 8, 24)
 const CAP = new THREE.CapsuleGeometry(1, 1, 6, 12)
 
+const PLANE = new THREE.PlaneGeometry(1, 1)
+let splatShared = null
+const splatMatP = () =>
+  (splatShared ??= new THREE.MeshStandardMaterial({ map: splatTex(5), transparent: true, alphaTest: 0.35, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }))
 const B = ({ g = SPH, c, p, s, r = [0, 0, 0], o }) => <mesh geometry={g} material={m(c, o)} position={p} scale={s} rotation={r} />
 
 export const PROFESSORS = {
@@ -225,12 +231,11 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
     const t = clock.elapsedTime + phase
     gore.current.visible = BRAWL.on
     if (BRAWL.on) {
-      // stabbing with the wand, twice as fast, lunging into it
-      const u = (t * 1.6) % 1
-      const strike = u > 0.55 && u < 0.72
-      root.current.rotation.y = rotation + Math.sin(t * 1.1) * 0.6
-      root.current.rotation.x = strike ? 0.12 : 0
-      wandArm.current.rotation.x = strike ? -1.5 : -0.3 - (u / 0.55) * 2.2
+      // jabbing with the wand on the same eased wind-up / thrust / recover curve as the Labubus
+      const P = poseAt('stab', (t * 0.9) % 1)
+      root.current.rotation.y = rotation + Math.sin(t * 0.6) * 0.5
+      root.current.rotation.x = P.lean * 0.4
+      wandArm.current.rotation.x = P.armR[0]
       wandArm.current.rotation.z = -0.2
       return
     }
@@ -241,6 +246,7 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
     wandArm.current.rotation.z = -0.25 - flick * 0.3
   })
   const gore = useRef()
+  const splatM = splatMatP()
   const sleeve = m(P.robe)
   const hand = m(P.skin)
   return (
@@ -270,12 +276,15 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
           </>
         )}
       </group>
-      {/* brawl splatter on the robe and a puddle */}
+      {/* brawl splatter decals on the robe and face */}
       <group ref={gore}>
-        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[0.08, 1.15, 0.27 * wide]} s={[0.1, 0.13, 0.02]} />
-        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[-0.12, 0.8, 0.31 * wide]} s={[0.07, 0.09, 0.02]} />
-        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[0.05, 1.66, 0.12]} s={[0.04, 0.03, 0.02]} />
-        <B g={CYL} c="#7a0808" o={{ roughness: 0.2 }} p={[0.1, 0.01, 0.55]} s={[0.55, 0.006, 0.4]} />
+        {[
+          [[0.08, 1.15, 0.215 * wide], 0.4, 0.32],
+          [[-0.12, 0.8, 0.27 * wide], 2.3, 0.28],
+          [[0.04, 1.68, 0.135], 4, 0.12],
+        ].map(([p, rz, sz], i) => (
+          <mesh key={i} geometry={PLANE} material={splatM} position={p} rotation={[0.18, 0, rz]} scale={sz} />
+        ))}
       </group>
       {/* head */}
       <group>
