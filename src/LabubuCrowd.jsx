@@ -118,7 +118,7 @@ function partsFor(tpl, pose) {
 }
 
 // baked frames per animation; more frames for faster motion so it stays smooth
-const FRAMES = { idle: 8, walk: 20, run: 20, stab: 32, cower: 10 }
+const FRAMES = { idle: 8, walk: 20, run: 20, stab: 32, cower: 10, down: 16 }
 const templateCache = new Map()
 function template(person) {
   const shirtBucket = person.shirt === 'yale' ? 'shirtYale' : person.shirt === 'stripes' ? 'shirtStripes' : person.shirt === 'plain' ? 'shirtPlain' : null
@@ -215,7 +215,7 @@ export default function LabubuCrowd({ people = STUDENTS }) {
       let frame
       if (BRAWL.on && a) {
         const anim = tpl.anims[a.anim] || tpl.anims.idle
-        frame = anim[Math.floor(a.phase * anim.length) % anim.length]
+        frame = anim[Math.min(anim.length - 1, Math.floor(a.phase * anim.length))]
         QY.setFromAxisAngle(UP, a.yaw)
         ROOT.compose(V.set(a.x, a.y, a.z), QY, S.set(HEIGHT, HEIGHT, HEIGHT))
       } else {

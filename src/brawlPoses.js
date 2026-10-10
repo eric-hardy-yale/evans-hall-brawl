@@ -37,6 +37,11 @@ export function poseAt(anim, u) {
     case 'cower':
       // arms over the head, knees bent, trembling
       return { legL: 0.35, legR: 0.35, armL: [-2.6, 0.55], armR: [-2.6, -0.55], lean: 0.18 + 0.03 * Math.sin(u * TAU * 3), bob: -0.04, crouch: 0.9 }
+    case 'down': {
+      // u = how far through the fall: 0 standing, 1 flat on the back with arms and legs splayed
+      const k = ease(Math.min(1, Math.max(0, u)))
+      return { legL: 0.25 * k, legR: -0.15 * k, armL: [-0.4 * k, 0.55 + 0.95 * k], armR: [-0.2 * k, -0.55 - 1.05 * k], lean: -1.52 * k, bob: 0.2 * k, crouch: 1 }
+    }
     default:
       return { legL: 0, legR: 0, armL: [0, 0.55], armR: [0, -0.55], lean: 0, bob: 0.01 * s, crouch: 1 }
   }

@@ -1,7 +1,9 @@
 // Brawl simulation: when brawl mode turns on, every Labubu stands up and becomes an agent.
 // Hunters carry knives and chase the nearest victim; runners wander until a hunter gets close,
 // then sprint away (some fight back when caught). A catch turns into a short knife fight that
-// leaves splatter on the victim and the floor, then the victim breaks free and the hunter moves on.
+// leaves splatter on the victim and the floor. Three accepted (unparried) stabs and the victim is
+// down: they fall on their back in a pool of blood for at least 10 s, then get up and run.
+// Otherwise the victim breaks free when the fight ends and the hunter moves on.
 // Agents stay on their own floor and use that floor's walls and step heights (levels.js).
 import { MAX_STEP, R_PLAYER } from './layout.js'
 import { LEVELS } from './levels.js'
@@ -19,6 +21,11 @@ const PANIC = 7.5 // runners bolt when a hunter is this close
 const REACH = 0.8 // close enough to stab
 const FIGHT_TIME = 2.6
 const STAB_RATE = 1.15 // stab cycles per second
+const STABS_TO_DROP = 3 // accepted stabs before a Labubu goes down
+const PARRY = 0.45 // chance a victim who fights back blocks a stab
+const DOWN_TIME = [10, 15] // seconds on the ground (min, max)
+const FALL_TIME = 0.6
+const RISE_TIME = 1.0
 
 const hash = (n, k) => {
   const x = Math.sin(n * 127.1 + k * 311.7) * 43758.5453
@@ -138,7 +145,7 @@ function near(a, r, fn) {
 }
 
 function reset(a, on) {
-  Object.assign(a, { x: a.home.x, y: a.home.y, z: a.home.z, yaw: a.home.yaw, vx: 0, vz: 0, blood: 0, target: null, threat: null, ignore: null })
+  Object.assign(a, { x: a.home.x, y: a.home.y, z: a.home.z, yaw: a.home.yaw, vx: 0, vz: 0, blood: 0, hits: 0, target: null, threat: null, ignore: null })
   a.armed = on && (a.role === 'hunter' || a.fightsBack)
   a.state = !on ? 'home' : a.role === 'hunter' ? 'seek' : 'wander'
   a.timer = Math.random() * 1.5
@@ -179,6 +186,29 @@ function startFight(h, v) {
   v.threat = h
 }
 
+// three accepted stabs: fall on your back in a pool of blood
+function knockDown(v, by) {
+  const partner = v.target
+  v.state = 'down'
+  v.timer = DOWN_TIME[0] + Math.random() * (DOWN_TIME[1] - DOWN_TIME[0])
+  v.phase = 0
+  v.target = null
+  v.threat = by
+  v.vx = 0
+  v.vz = 0
+  // the body ends up lying behind where they stood, so the pool goes there
+  splat(v.x - Math.sin(v.yaw) * 0.45, v.y, v.z - Math.cos(v.yaw) * 0.45, 2.4)
+  splat(v.x - Math.sin(v.yaw) * 0.2 + (Math.random() - 0.5) * 0.4, v.y, v.z - Math.cos(v.yaw) * 0.2, 1.3)
+  if (partner && partner.target === v) {
+    if (partner.role === 'hunter' && partner.state === 'fight') endFight(partner)
+    else {
+      partner.state = 'flee' // a runner who just dropped their hunter bolts
+      partner.timer = 3
+      partner.target = null
+    }
+  }
+}
+
 function endFight(h) {
   const v = h.target
   h.state = 'seek'
@@ -205,9 +235,30 @@ function think(a, dt, t) {
     return d
   }
 
+  if (a.state === 'down') {
+    a.phase = Math.min(1, a.phase + dt / FALL_TIME)
+    if ((a.timer -= dt) <= 0) a.state = 'rising'
+    return
+  }
+  if (a.state === 'rising') {
+    a.phase -= dt / RISE_TIME
+    if (a.phase <= 0) {
+      a.phase = 0
+      a.hits = 0
+      if (a.role === 'hunter') {
+        a.state = 'seek'
+        a.timer = 1
+      } else {
+        a.state = 'flee'
+        a.timer = 3
+      }
+    }
+    return
+  }
+
   if (a.state === 'fight' || a.state === 'caught') {
     const b = a.target
-    if (!b || !AGENTS.has(b)) return a.role === 'hunter' ? endFight(a) : void (a.state = 'flee')
+    if (!b || !AGENTS.has(b) || b.state === 'down' || b.state === 'rising') return a.role === 'hunter' ? endFight(a) : void (a.state = 'flee')
     a.faceYaw = Math.atan2(b.x - a.x, b.z - a.z)
     // keep a little distance so the two don't overlap
     const d = Math.hypot(b.x - a.x, b.z - a.z)
@@ -216,10 +267,13 @@ function think(a, dt, t) {
       const before = a.phase
       a.phase = (a.phase + dt * STAB_RATE) % 1
       const crossed = before < STAB_HIT ? a.phase >= STAB_HIT || a.phase < before : a.phase >= STAB_HIT && a.phase < before
-      if (crossed) {
+      // a stab only counts if it isn't parried (cowering victims can't parry)
+      if (crossed && !(b.state === 'fight' && Math.random() < PARRY)) {
         b.blood = Math.min(3, b.blood + 1)
+        b.hits = (b.hits || 0) + 1
         const k = 0.35 + Math.random() * 0.3
-        if (Math.random() < 0.6) splat(b.x + (b.x - a.x) * k, b.y, b.z + (b.z - a.z) * k, 0.8 + b.blood * 0.25)
+        splat(b.x + (b.x - a.x) * k, b.y, b.z + (b.z - a.z) * k, 0.8 + b.blood * 0.25)
+        if (b.hits >= STABS_TO_DROP) return knockDown(b, a)
       }
     } else a.phase = (a.phase + dt * 2.2) % 1
     if (a.role === 'hunter' && (a.timer -= dt) <= 0) endFight(a)
@@ -272,7 +326,7 @@ function think(a, dt, t) {
   let az = 0
   let threat = false
   near(a, PANIC, (b, d) => {
-    if (b.role !== 'hunter') return
+    if (b.role !== 'hunter' || b.state === 'down' || b.state === 'rising') return
     const w = (PANIC - d) / PANIC + (b.target === a ? 1 : 0)
     ax += ((a.x - b.x) / (d || 1)) * w
     az += ((a.z - b.z) / (d || 1)) * w
@@ -320,6 +374,7 @@ function move(a, dt) {
   }
   a.vx += (dx - a.vx) * acc
   a.vz += (dz - a.vz) * acc
+  if (a.state === 'down' || a.state === 'rising') a.vx = a.vz = 0 // bodies on the ground stay put
   const speed = Math.hypot(a.vx, a.vz)
   const ox = a.x
   const oz = a.z
@@ -354,13 +409,15 @@ function move(a, dt) {
   a.y += (fy - a.y) * Math.min(1, dt * 12)
 
   // face where you're going (or your opponent), turning smoothly
-  const want = (a.state === 'fight' || a.state === 'caught') && a.faceYaw !== undefined ? a.faceYaw : speed > 0.25 ? Math.atan2(a.vx, a.vz) : a.yaw
+  const lying = a.state === 'down' || a.state === 'rising'
+  const want = lying ? a.yaw : (a.state === 'fight' || a.state === 'caught') && a.faceYaw !== undefined ? a.faceYaw : speed > 0.25 ? Math.atan2(a.vx, a.vz) : a.yaw
   let diff = want - a.yaw
   diff = Math.atan2(Math.sin(diff), Math.cos(diff))
   a.yaw += diff * Math.min(1, dt * 9)
 
-  // animation state + phase
-  if (a.state === 'fight') a.anim = 'stab'
+  // animation state + phase (down/rising phase is the fall progress, set in think)
+  if (a.state === 'down' || a.state === 'rising') a.anim = 'down'
+  else if (a.state === 'fight') a.anim = 'stab'
   else if (a.state === 'caught') a.anim = 'cower'
   else if (speed > 2.2) a.anim = 'run'
   else if (speed > 0.25) a.anim = 'walk'

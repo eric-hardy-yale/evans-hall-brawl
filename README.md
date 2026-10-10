@@ -44,7 +44,7 @@ Open http://localhost:5173 and click **Click to walk in**.
 - `src/parts.jsx`: shared mesh helpers (instanced boxes, planes, wall strips).
 - `src/World.jsx`: all the floor 2 meshes.
 - `src/brawl.js`: brawl mode switch.
-- `src/brawlSim.js`: the brawl simulation. Every Labubu becomes an agent: hunters (about a third) carry knives, prowl, and chase the nearest victim; runners wander, then flee when a hunter gets close (some fight back). A catch becomes a short knife fight that leaves splatter on the victim and the floor. Agents use each floor's walls and step heights.
+- `src/brawlSim.js`: the brawl simulation. Every Labubu becomes an agent: hunters (about a third) carry knives, prowl, and chase the nearest victim; runners wander, then flee when a hunter gets close (some fight back). A catch becomes a short knife fight that leaves splatter on the victim and the floor. Three accepted stabs (victims who fight back parry some) and a Labubu is down: it falls on its back in a pool of blood for 10 to 15 seconds, then gets up and runs. Agents use each floor's walls and step heights.
 - `src/brawlPoses.js`: eased walk / run / stab / cower pose curves. `Labubu.jsx` poses each animated figure every frame; `LabubuCrowd.jsx` bakes the cycles per outfit and re-poses hundreds of seated students cheaply.
 - `src/BrawlFx.jsx`: steps the simulation each frame and draws the floor splatter decals.
 - `src/GroundDetails.jsx`: floor 1 people, fixtures and signage. Walls use instanced boxes and the drums use partial cylinders.
