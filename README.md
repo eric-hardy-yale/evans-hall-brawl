@@ -6,6 +6,8 @@ Floor 1 (courtyard level) has the Bekenstein Atrium and main entrance, the 350-s
 
 **Walk it in your browser:** https://zlisto.github.io/yale_som_virtual/
 
+**Also on Render:** `render.yaml` deploys it as a static site. One click: [Deploy to Render](https://render.com/deploy?repo=https://github.com/eric-hardy-yale/yale_som_virtual).
+
 ## Run it locally
 
 ```bash
