@@ -8,7 +8,7 @@ Floor 1 (courtyard level) has the Bekenstein Atrium and main entrance, the 350-s
 
 **The original (floor 2 only):** https://zlisto.github.io/yale_som_virtual/
 
-**Also on Render:** `render.yaml` deploys it as a static site. One click: [Deploy to Render](https://render.com/deploy?repo=https://github.com/eric-hardy-yale/evans-hall-brawl).
+**Also on Render:** `render.yaml` deploys the game as a static site and the AI-avatar backend as a web service. One click: [Deploy to Render](https://render.com/deploy?repo=https://github.com/eric-hardy-yale/evans-hall-brawl) (Render asks for `PORTKEY_API_KEY` during setup).
 
 ## Run it locally
 
@@ -55,7 +55,9 @@ backend/.venv/bin/python -m uvicorn main:app --app-dir backend --port 8000
 npm run dev    # http://localhost:5173 ; Vite proxies /api to the backend
 ```
 
-**Keys:** put `PORTKEY_API_KEY=...` in `backend/.env` (it may also live in the repo folder or one or two folders up; `backend/.env` wins). `OPENAI_MODEL` overrides the model. `.env` is gitignored: never commit a real key. The GitHub Pages site has no backend, so there the chat just says it can't reach it.
+**Online:** published builds (GitHub Pages and the Render static site) talk to the backend at `https://evans-hall-brawl-api.onrender.com` (override with `VITE_API_URL` at build time). The Portkey key pays for every chat, so the backend caps it: `CHAT_LIMIT_PER_HOUR` per visitor (default 30) and `CHAT_LIMIT_PER_DAY` in total (default 400); past that it answers 429 with a friendly note. On Render's free plan the backend sleeps when idle, so the first message after a while can take up to a minute. CORS allows localhost, `eric-hardy-yale.github.io`, the Render static site, and anything in `ALLOWED_ORIGINS`.
+
+**Keys:** put `PORTKEY_API_KEY=...` in `backend/.env` (it may also live in the repo folder or one or two folders up; `backend/.env` wins). `OPENAI_MODEL` overrides the model. `.env` is gitignored: never commit a real key. If the backend is down, the game still works and the chat says it can't reach it.
 
 **Routes:**
 

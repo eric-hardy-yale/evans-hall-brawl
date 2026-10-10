@@ -1,5 +1,6 @@
-# Render Blueprint: deploys the walkthrough as a free static site.
+# Render Blueprint: the game as a free static site + the AI-avatar backend as a free web service.
 # One-click setup: https://render.com/deploy?repo=https://github.com/eric-hardy-yale/evans-hall-brawl
+# Render asks for PORTKEY_API_KEY during setup (sync: false); it is never stored in this repo.
 services:
   - type: web
     runtime: static
@@ -11,3 +12,26 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
+      - key: VITE_API_URL
+        value: https://evans-hall-brawl-api.onrender.com
+
+  - type: web
+    runtime: python
+    name: evans-hall-brawl-api
+    plan: free
+    branch: main
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: PORTKEY_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+      - key: CHAT_LIMIT_PER_HOUR
+        value: 30
+      - key: CHAT_LIMIT_PER_DAY
+        value: 400

@@ -4,7 +4,9 @@ import { PEOPLE_INFO } from './talk.js'
 // Chat with an AI avatar (backend/main.py). Black and pink like the minimap.
 // Each conversation (messages + session_id) lives in a module-level Map so it survives
 // closing and reopening the panel.
-const API = import.meta.env.VITE_API_URL ?? ''
+// dev: Vite proxies /api to localhost:8000. Published builds (GitHub Pages, Render) call the Render backend.
+export const DEFAULT_API = 'https://evans-hall-brawl-api.onrender.com'
+const API = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : DEFAULT_API)
 const MAX = 2000
 const CONVOS = new Map() // id -> { messages: [{ who: 'me' | 'them' | 'note', text }], sessionId }
 
@@ -68,6 +70,8 @@ export default function ChatPanel({ id, onClose }) {
     setText('')
     push({ who: 'me', text: message })
     setWaiting(true)
+    // the free Render server naps when idle; the first message can take ~a minute to wake it
+    const slow = setTimeout(() => push({ who: 'note', text: 'Waking up the backend (free servers nap when idle). This first reply can take up to a minute…' }), 6000)
     try {
       const res = await fetch(`${API}/api/people/${id}/chat`, {
         method: 'POST',
@@ -83,11 +87,10 @@ export default function ChatPanel({ id, onClose }) {
       push({ who: 'them', text: data.reply })
     } catch (e) {
       const offline = e instanceof TypeError || /Failed to fetch|NetworkError|404/.test(String(e.message))
-      push({
-        who: 'note',
-        text: offline ? "Can't reach the backend. Start it with: backend/.venv/bin/python -m uvicorn main:app --app-dir backend --port 8000" : e.message,
-      })
+      const fix = import.meta.env.DEV ? ' Start it with: backend/.venv/bin/python -m uvicorn main:app --app-dir backend --port 8000' : ' Try again in a minute.'
+      push({ who: 'note', text: offline ? `Can't reach the backend.${fix}` : e.message })
     } finally {
+      clearTimeout(slow)
       setWaiting(false)
       input.current?.focus()
     }
