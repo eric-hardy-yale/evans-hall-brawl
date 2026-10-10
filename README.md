@@ -4,9 +4,11 @@ A first-person walk-through of the 1st and 2nd floors of Edward P. Evans Hall (Y
 
 Floor 1 (courtyard level) has the Bekenstein Atrium and main entrance, the 350-seat Zhang Auditorium, a Dining Commons, a café, a student commons, and the Shen Courtyard lawn you can walk out onto. Floor 2 has the blue classroom drums you can walk into, the curvy glass cloister around the courtyard, Ross Library on the west side, the Beinecke Terrace Room and its outdoor terrace on the east side, the small glass meeting rooms, and paintings above the stairwells.
 
-**Walk it in your browser:** https://zlisto.github.io/yale_som_virtual/
+**This fork (floor 1 + brawl mode):** https://eric-hardy-yale.github.io/evans-hall-brawl/
 
-**Also on Render:** `render.yaml` deploys it as a static site. One click: [Deploy to Render](https://render.com/deploy?repo=https://github.com/eric-hardy-yale/yale_som_virtual).
+**The original (floor 2 only):** https://zlisto.github.io/yale_som_virtual/
+
+**Also on Render:** `render.yaml` deploys it as a static site. One click: [Deploy to Render](https://render.com/deploy?repo=https://github.com/eric-hardy-yale/evans-hall-brawl).
 
 ## Run it locally
 

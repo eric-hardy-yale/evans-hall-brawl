@@ -1,9 +1,9 @@
 # Render Blueprint: deploys the walkthrough as a free static site.
-# One-click setup: https://render.com/deploy?repo=https://github.com/eric-hardy-yale/yale_som_virtual
+# One-click setup: https://render.com/deploy?repo=https://github.com/eric-hardy-yale/evans-hall-brawl
 services:
   - type: web
     runtime: static
-    name: yale-som-virtual
+    name: evans-hall-brawl
     branch: main
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
