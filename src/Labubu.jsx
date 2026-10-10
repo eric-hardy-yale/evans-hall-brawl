@@ -20,6 +20,7 @@ import { splatTex } from './textures.js'
 //   sitting     true → legs stick forward (put the root on a chair seat)
 //   height      meters (default 1)
 //   phase       animation offset so a crowd doesn't move in sync
+//   noBrawl     true → never joins brawl mode (e.g. a keychain Labubu)
 // In brawl mode (brawl.js) every Labubu becomes a brawlSim agent: hunters chase and stab, runners flee.
 
 export const SKIN = '#f3c9a5'
@@ -284,6 +285,7 @@ export default function Labubu({
   phase = 0,
   position = [0, 0, 0],
   rotation = 0,
+  noBrawl = false,
 }) {
   const root = useRef()
   const body = useRef()
@@ -307,6 +309,7 @@ export default function Labubu({
   const agent = useRef(null)
   const tmp = useMemo(() => new THREE.Vector3(), [])
   useEffect(() => {
+    if (noBrawl) return
     // join the brawl from wherever this Labubu stands or sits
     root.current.updateWorldMatrix(true, false)
     const p = root.current.getWorldPosition(new THREE.Vector3())
@@ -314,7 +317,7 @@ export default function Labubu({
     const a = addAgent({ x: p.x, y: LEVELS[level].floorAt(p.x, p.z), z: p.z, yaw: rotation, level })
     agent.current = a
     return () => removeAgent(a)
-  }, [rotation])
+  }, [rotation, noBrawl])
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime + phase

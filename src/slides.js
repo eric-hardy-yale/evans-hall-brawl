@@ -11,6 +11,7 @@ export const COURSES = {
   mgt538: { code: 'MGT 538', name: 'Mastering Influence & Persuasion', prof: 'Gilderoy Lockhart' },
   mgt800: { code: 'MGT 800', name: 'Crisis Management in Tech', prof: 'Alastor Moody' },
   mgt541: { code: 'MGT 541', name: 'Corporate Finance', prof: 'Filius Flitwick' },
+  mgt409z: { code: 'MGT 409', name: 'AI Foundations for Managers', prof: 'Tauhid Zaman (AI avatar)' },
 }
 export const COURSE_KEYS = Object.keys(COURSES)
 export const SLIDE_KINDS = ['title', 'chart', 'content']
@@ -22,6 +23,14 @@ const W = 1280
 const Hh = 720
 
 const DECKS = {
+  mgt409z: {
+    title: ['AI Agents with PydanticAI', 'Model + instructions + tools = an agent'],
+    content: [
+      'Building an agent in PydanticAI',
+      ['agent = Agent(model, instructions=...)', '@agent.tool gives it hands', 'result = agent.run_sync(prompt) → result.output', 'Typed outputs with Pydantic models'],
+    ],
+    chart: 'agentloop',
+  },
   mgt409: {
     title: ['Vibe Coding with Agents', 'Say it in plain words. Let the agent build.'],
     content: ['How a vibe coder ships', ['Say what you want in plain words', 'Let the agent plan, then build', 'Run it, look at it, fix it', 'Pick the cheapest model that works']],
@@ -94,7 +103,58 @@ function drawChart(g, which) {
     g.stroke()
   }
   g.font = '30px Georgia, serif'
-  if (which === 'models') {
+  if (which === 'agentloop') {
+    // User → Agent → Tool → back to Agent → answer (typed output)
+    const box = (x, y, w, h, label, fill, ink = '#ffffff') => {
+      g.fillStyle = fill
+      g.beginPath()
+      g.roundRect(x, y, w, h, 22)
+      g.fill()
+      g.fillStyle = ink
+      g.font = 'bold 40px Georgia, serif'
+      g.textAlign = 'center'
+      g.fillText(label, x + w / 2, y + h / 2 + 14)
+      g.textAlign = 'left'
+    }
+    const arrow = (x0, y0, x1, y1, label) => {
+      g.strokeStyle = INK
+      g.fillStyle = INK
+      g.lineWidth = 5
+      g.beginPath()
+      g.moveTo(x0, y0)
+      g.lineTo(x1, y1)
+      g.stroke()
+      const a = Math.atan2(y1 - y0, x1 - x0)
+      g.beginPath()
+      g.moveTo(x1, y1)
+      g.lineTo(x1 - 22 * Math.cos(a - 0.4), y1 - 22 * Math.sin(a - 0.4))
+      g.lineTo(x1 - 22 * Math.cos(a + 0.4), y1 - 22 * Math.sin(a + 0.4))
+      g.fill()
+      if (label) {
+        g.font = 'italic 26px Georgia, serif'
+        g.fillText(label, (x0 + x1) / 2 - 60, (y0 + y1) / 2 - 16)
+      }
+    }
+    box(80, 300, 200, 110, 'User', '#8aa4c8')
+    box(500, 300, 240, 110, 'Agent', BLUE)
+    box(540, 520, 160, 90, 'Tool', PINK)
+    box(930, 290, 290, 130, 'answer', '#2f7a3a')
+    g.fillStyle = '#ffffff'
+    g.font = '24px Georgia, serif'
+    g.textAlign = 'center'
+    g.fillText('(typed output)', 1075, 400)
+    g.textAlign = 'left'
+    arrow(280, 355, 495, 355, 'prompt')
+    arrow(590, 410, 590, 515, '')
+    arrow(650, 515, 650, 415, '')
+    g.font = 'italic 26px Georgia, serif'
+    g.fillStyle = INK
+    g.fillText('call', 470, 475)
+    g.fillText('result', 665, 475)
+    arrow(740, 355, 925, 355, 'done')
+    g.font = '28px Georgia, serif'
+    g.fillText('The agent loops: think → call a tool → read the result → repeat, then answer.', 80, 200)
+  } else if (which === 'models') {
     axes()
     const bars = [['luna', 1, PINK], ['terra', 3, '#8aa4c8'], ['sol', 6, '#5a7bb0'], ['astra', 10, BLUE]]
     bars.forEach(([n, v, c], i) => {

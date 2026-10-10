@@ -6,6 +6,8 @@ import Minimap from './Minimap.jsx'
 import TouchControls from './TouchControls.jsx'
 import { EYE, SPAWN } from './layout.js'
 import { BRAWL, toggleBrawl } from './brawl.js'
+import ChatPanel from './ChatPanel.jsx'
+import { PEOPLE_INFO, TALKING } from './talk.js'
 
 export default function App() {
   const [locked, setLocked] = useState(false)
@@ -19,6 +21,21 @@ export default function App() {
   const onLock = useCallback((v) => setLocked(v), [])
   const onWhere = useCallback((w) => setWhere(w), [])
   const onLevel = useCallback((l) => setLevel(l), [])
+  // talking to AI avatars: what's under the crosshair, and who the chat is open with
+  const [hoverId, setHoverId] = useState(null)
+  const [talkId, setTalkId] = useState(null)
+  const onHover = useCallback((id) => setHoverId(id), [])
+  const onTalk = useCallback((id) => {
+    if (!PEOPLE_INFO[id]) return
+    lockRef.unlock?.() // free the mouse for typing
+    TALKING.id = id
+    setTalkId(id)
+  }, [])
+  const closeChat = useCallback(() => {
+    TALKING.id = null
+    setTalkId(null)
+    if (!touchRef.current.active) lockRef.current?.() // grab the mouse again
+  }, [])
   // phones have no pointer lock, so they get a joystick + drag-to-look instead
   const [isTouch] = useState(() => matchMedia('(pointer: coarse)').matches) // phones + tablets; touchscreen laptops still get mouse mode
   const [touchOn, setTouchOn] = useState(false)
@@ -31,6 +48,7 @@ export default function App() {
   const playing = locked || touchOn
   useEffect(() => {
     const k = (e) => {
+      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return
       if (e.code === 'KeyM') setShowMap((v) => !v)
       if (e.code === 'KeyB') setBrawl(toggleBrawl())
     }
@@ -45,7 +63,7 @@ export default function App() {
         dpr={[1, 1.75]}
       >
         <World />
-        <Player lockRef={lockRef} mapRef={mapRef} touchRef={touchRef} floorReq={floorReq} onLock={onLock} onWhere={onWhere} onLevel={onLevel} />
+        <Player lockRef={lockRef} mapRef={mapRef} touchRef={touchRef} floorReq={floorReq} onLock={onLock} onWhere={onWhere} onLevel={onLevel} onHover={onHover} onTalk={onTalk} />
       </Canvas>
 
       <div className="where">
@@ -65,10 +83,12 @@ export default function App() {
       <button className="floorbtn brawlbtn" onClick={() => setBrawl(toggleBrawl())}>
         {brawl ? 'brawl: on' : 'brawl: off'}
       </button>
-      {playing && <div className="crosshair" />}
+      {playing && !talkId && <div className={hoverId ? 'crosshair talk' : 'crosshair'} />}
+      {playing && !talkId && hoverId && <div className="talkhint">Click to talk to {PEOPLE_INFO[hoverId]?.name}</div>}
+      {talkId && <ChatPanel id={talkId} onClose={closeChat} />}
       {touchOn && <TouchControls touchRef={touchRef} onPause={() => setTouch(false)} />}
 
-      {!playing && (
+      {!playing && !talkId && (
         <div className="overlay" onClick={() => (isTouch ? setTouch(true) : lockRef.current?.())}>
           <div className="card">
             <div className="kicker">Yale SOM · Evans Hall</div>

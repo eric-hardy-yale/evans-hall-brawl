@@ -37,11 +37,43 @@ Open http://localhost:5173 and click **Click to walk in**.
 
 **Phone / tablet:** tap **Tap to walk in**. The left-thumb joystick walks (push it all the way to sprint), dragging anywhere else looks around, and there are on-screen jump and pause buttons. On a laptop, click **Use on-screen joystick** to try the phone controls. WASD still works in that mode.
 
+## Talk to people (backend)
+
+Some professors are AI avatars you can talk to. Walk up to **Prof. Tauhid Zaman** (AI avatar) in classroom 2200 (Blumetti), aim the crosshair at him (it turns into a pink ring), and click. A chat opens on the right and he turns to face you. Esc or × closes it; the conversation is still there when you come back.
+
+Each avatar is a [PydanticAI](https://ai.pydantic.dev) agent in a small FastAPI backend (`backend/`). It runs `gpt-6-luna` through Portkey and can look things up in the course catalog (`data/yale_som.db`).
+
+**Run it** (two terminals, from the repo root):
+
+```bash
+uv venv --python 3.13 backend/.venv            # or: python3.13 -m venv backend/.venv
+uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
+backend/.venv/bin/python -m uvicorn main:app --app-dir backend --port 8000
+```
+
+```bash
+npm run dev    # http://localhost:5173 ; Vite proxies /api to the backend
+```
+
+**Keys:** put `PORTKEY_API_KEY=...` in `backend/.env` (it may also live in the repo folder or one or two folders up; `backend/.env` wins). `OPENAI_MODEL` overrides the model. `.env` is gitignored: never commit a real key. The GitHub Pages site has no backend, so there the chat just says it can't reach it.
+
+**Routes:**
+
+- `GET /api/health` → `{ok, model, people}`
+- `GET /api/people` → `[{id, name, title, room, course}]`
+- `POST /api/people/{id}/chat` with `{message, session_id}` → `{reply, session_id}` (404 unknown person, 502 if the model call fails). Conversation memory is kept on the server per session.
+
+**Tools every avatar has:** `search_courses(keyword)` (number, title, description, category, or instructor) and `course_info(course_number)` (every section: times, room, instructor). They only return public catalog fields, never emails, and skip PhD courses.
+
+**Add an avatar:** write `backend/prompts/<id>.md` (start it with "You are an AI avatar of Professor ..."), add a `Person` to `PEOPLE` in `backend/people.py`, add an entry to `PEOPLE_INFO` in `src/talk.js`, and give a professor preset that id in a classroom (`src/Faculty.jsx`).
+
 ## How it's built
 
 - `src/layout.js`: the floor plan in meters (+x east, -z north). It holds the drums, library, Beinecke, stairs, meeting rooms, wall colliders, and room lookup. Each classroom faces the courtyard, with the whiteboard and podium on the inner side and stadium-seating rows (32 cm risers) stepping up toward the outer wall; its two doors are at the front corners. You climb the center-aisle steps one riser at a time.
 - `src/ground.js`: the floor 1 plan (5 m below floor 2, level with the courtyard lawn): walls, the raked auditorium, dining, café, commons, and its own collision, floor height and room lookup.
 - `src/GroundFloor.jsx`: the floor 1 meshes.
+- `src/talk.js` + `src/ChatPanel.jsx`: who you can talk to, and the chat window.
+- `backend/`: FastAPI + PydanticAI avatars (`main.py` routes, `people.py` agents and tools, `courses.py` catalog access, `prompts/` personas).
 - `src/levels.js`: the two floors and the stairwell doors that connect them.
 - `src/parts.jsx`: shared mesh helpers (instanced boxes, planes, wall strips).
 - `src/World.jsx`: all the floor 2 meshes.
@@ -58,7 +90,7 @@ Open http://localhost:5173 and click **Click to walk in**.
 - `src/LabubuParty.jsx`: the crew playing in the courtyard plus Labubus in meetings in every glass room.
 - `src/slides.js`: lecture slides for eight Fall 2026 MBA courses (MGT 409, 404, 403, 887, 402, 538, 800, 541) on the classroom screens and meeting-room monitors.
 - `src/LabubuCrowd.jsx`: 30 seated Labubu students per classroom, drawn with shared instanced meshes.
-- `src/Professor.jsx` + `src/Faculty.jsx`: cartoon Hogwarts professors teaching each class (Dumbledore, McGonagall, Trelawney, Slughorn, Snape, Lockhart, Moody, Flitwick), plus Hagrid in the courtyard.
+- `src/Professor.jsx` + `src/Faculty.jsx`: the professors. Classroom 2200 has the AI avatar of Prof. Tauhid Zaman (casual preset: hoodie, jeans, Labubu keychain); the rest are cartoon Hogwarts professors teaching each class (Dumbledore, McGonagall, Trelawney, Slughorn, Snape, Lockhart, Moody, Flitwick), plus Hagrid in the courtyard.
 - `src/HandsomeDan.jsx`: Handsome Dan touring a loop of 1000 randomly chosen classrooms (blue dot on the map).
 
 The floor 2 layout is estimated from the wayfinding plan posted on the floor, so room sizes are approximate. Floor 1 is not based on a floor plan: the Zhang Auditorium, Bekenstein Atrium and Shen Courtyard are real Evans Hall spaces, but where they sit, and the dining commons, café, student commons and kitchen, are a plausible guess. The Stair G painting comes from a photo; the other stairwell paintings are made up.

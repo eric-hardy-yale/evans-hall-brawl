@@ -1,13 +1,17 @@
-import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { BRAWL } from './brawl.js'
 import { poseAt } from './brawlPoses.js'
 import { splatTex } from './textures.js'
+import Labubu from './Labubu.jsx'
+import { TALKABLES, TALKING } from './talk.js'
 
 // Cartoon wizard professors built from primitives. Each preset sets robe, hair, beard, hat,
 // glasses, size, and a prop; the shared body handles the robe, head, arms and wand.
 // Figure faces +z; its own right hand (holding the wand) is at -x.
+// casual: true presets (the AI avatars) wear a hoodie, jeans and sneakers instead of a robe, and no wand.
+// talkId: you can click this professor to chat (talk.js); while chatting they turn to face you.
 
 const mats = new Map()
 const m = (color, o = {}) => {
@@ -38,6 +42,32 @@ export const PROFESSORS = {
   moody: { name: 'Alastor Moody', robe: '#3a3a30', trim: '#5a5240', skin: '#d9b39a', hair: '#8f8a80', height: 1.85 },
   flitwick: { name: 'Filius Flitwick', robe: '#22304f', trim: '#3d5a8a', skin: '#f0cfb4', hair: '#f2f2f2', height: 1.05 },
   hagrid: { name: 'Rubeus Hagrid', robe: '#5b4330', trim: '#3b2c1f', skin: '#e2b28f', hair: '#2e2219', height: 2.7 },
+  // AI avatar: black hoodie with pink trim, jeans, white + pink sneakers, Labubu keychain on his belt loop
+  zaman: { name: 'Tauhid Zaman', casual: true, robe: '#141416', trim: '#ff4fa3', skin: '#c99a74', hair: '#17110e', height: 1.8 },
+}
+
+// pink-on-black hoodie print: BLACKPINK across the chest, a little AI patch underneath
+let hoodiePrint = null
+function hoodiePrintMat() {
+  if (hoodiePrint) return hoodiePrint
+  const c = document.createElement('canvas')
+  c.width = 512
+  c.height = 256
+  const g = c.getContext('2d')
+  g.fillStyle = '#141416'
+  g.fillRect(0, 0, 512, 256)
+  g.fillStyle = '#ff4fa3'
+  g.textAlign = 'center'
+  g.font = 'bold 76px "Arial Black", Impact, sans-serif'
+  g.fillText('BLACKPINK', 256, 110)
+  g.fillRect(206, 150, 100, 70)
+  g.fillStyle = '#141416'
+  g.font = 'bold 52px "Arial Black", Impact, sans-serif'
+  g.fillText('AI', 256, 205)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  hoodiePrint = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 })
+  return hoodiePrint
 }
 
 function Face({ who, P }) {
@@ -69,7 +99,7 @@ function Face({ who, P }) {
         />
       ))}
       {/* mouth: Lockhart beams, Snape and McGonagall are not amused */}
-      {who === 'lockhart' ? (
+      {who === 'lockhart' || who === 'zaman' ? (
         <B g={BOX} c="#ffffff" p={[0, 1.645, 0.118]} s={[0.07, 0.022, 0.01]} />
       ) : (
         <B g={BOX} c="#6b2f2a" p={[0, 1.645, 0.118]} r={[0, 0, 0]} s={[who === 'snape' ? 0.045 : 0.055, 0.008, 0.008]} />
@@ -202,6 +232,17 @@ function Extras({ who, P }) {
           <B c="#e8b0b0" p={[0, 1.7, 0.13]} s={[0.03, 0.025, 0.02]} />
         </>
       )
+    case 'zaman':
+      // short dark hair with a little swoop up front
+      return (
+        <>
+          <B c={P.hair} p={[0, 1.765, -0.015]} s={[0.132, 0.1, 0.133]} />
+          <B c={P.hair} p={[0.03, 1.82, 0.07]} r={[0.5, 0, -0.3]} s={[0.09, 0.04, 0.06]} />
+          {[-1, 1].map((sx) => (
+            <B key={sx} c={P.hair} p={[0.118 * sx, 1.72, -0.02]} s={[0.025, 0.06, 0.07]} />
+          ))}
+        </>
+      )
     case 'hagrid':
       return (
         <>
@@ -220,15 +261,41 @@ function Extras({ who, P }) {
   }
 }
 
-export default function Professor({ who, position = [0, 0, 0], rotation = 0, phase = 0 }) {
+export default function Professor({ who, position = [0, 0, 0], rotation = 0, phase = 0, talkId = null }) {
   const P = PROFESSORS[who]
+  const casual = !!P.casual
+  const { camera } = useThree()
+  const keychain = useRef()
+  const facing = useRef(rotation)
+  useEffect(() => {
+    if (!talkId) return
+    const r = root.current
+    r.userData.talkId = talkId
+    TALKABLES.add(r)
+    return () => TALKABLES.delete(r)
+  }, [talkId])
   const s = P.height / 1.9
   const wide = who === 'hagrid' ? 1.3 : who === 'slughorn' ? 1.15 : 1
   const root = useRef()
   const wandArm = useRef()
   const glow = useMemo(() => m('#ffd6ea', { emissive: '#ff4fa3', emissiveIntensity: 2 }), [])
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, dt) => {
     const t = clock.elapsedTime + phase
+    if (keychain.current) keychain.current.rotation.set(Math.sin(t * 2.3) * 0.25, 0, Math.sin(t * 1.7) * 0.3) // dangling
+    // chatting: turn smoothly to face the visitor, bob a little like talking, no waving
+    if (talkId && TALKING.id === talkId) {
+      gore.current.visible = false
+      const r = root.current
+      const want = Math.atan2(camera.position.x - r.position.x, camera.position.z - r.position.z)
+      let diff = want - facing.current
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff))
+      facing.current += diff * Math.min(1, dt * 5)
+      r.rotation.set(Math.sin(t * 7) * 0.015, facing.current, 0)
+      r.position.y = position[1] + Math.abs(Math.sin(t * 6)) * 0.02
+      wandArm.current.rotation.set(-0.35 + Math.sin(t * 3) * 0.15, 0, -0.2) // easy hand gestures
+      return
+    }
+    root.current.position.y = position[1]
     gore.current.visible = BRAWL.on
     if (BRAWL.on) {
       // jabbing with the wand on the same eased wind-up / thrust / recover curve as the Labubus
@@ -240,7 +307,11 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
       return
     }
     root.current.rotation.x = 0
-    root.current.rotation.y = rotation + Math.sin(t * 0.4) * 0.35 // scanning the room
+    const idle = rotation + Math.sin(t * 0.4) * 0.35 // scanning the room
+    let back = idle - facing.current
+    back = Math.atan2(Math.sin(back), Math.cos(back))
+    facing.current += back * Math.min(1, dt * 3) // ease back after a chat
+    root.current.rotation.y = facing.current
     const flick = Math.max(0, Math.sin(t * 1.3)) // raise the wand every few seconds
     wandArm.current.rotation.x = -0.3 - flick * 1.4
     wandArm.current.rotation.z = -0.25 - flick * 0.3
@@ -251,16 +322,50 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
   const hand = m(P.skin)
   return (
     <group ref={root} position={position} rotation={[0, rotation, 0]} scale={s}>
-      {/* robe + torso */}
-      <mesh geometry={new THREE.CylinderGeometry(0.2 * wide, 0.36 * wide, 1.22, 28)} material={sleeve} position={[0, 0.61, 0]} />
-      <B g={CYL} c={P.trim} p={[0, 0.03, 0]} s={[0.365 * wide, 0.06, 0.365 * wide]} />
-      <B g={CYL} c={P.robe} p={[0, 1.36, 0]} s={[0.205 * wide, 0.3, 0.19 * wide]} />
-      <B c={P.robe} p={[0, 1.5, 0]} s={[0.27 * wide, 0.1, 0.18 * wide]} />
-      <B g={BOX} c={P.trim} p={[0, 1.3, 0.19 * wide]} s={[0.06, 0.38, 0.01]} />
+      {casual ? (
+        <>
+          {/* jeans + white sneakers with pink soles */}
+          {[-1, 1].map((sx) => (
+            <group key={sx}>
+              <B g={CYL} c="#3b5b8c" p={[0.1 * sx, 0.5, 0]} s={[0.085, 0.84, 0.085]} />
+              <B g={BOX} c="#f4f4f2" p={[0.1 * sx, 0.06, 0.04]} s={[0.11, 0.09, 0.25]} />
+              <B g={BOX} c={P.trim} p={[0.1 * sx, 0.012, 0.04]} s={[0.115, 0.025, 0.26]} />
+            </group>
+          ))}
+          <B g={CYL} c="#2c4670" p={[0, 0.92, 0]} s={[0.2, 0.1, 0.16]} />
+          {/* hoodie: body, pink hem and cuffs, hood behind the neck, drawstrings, chest print */}
+          <B g={CYL} c={P.robe} p={[0, 1.18, 0]} s={[0.235, 0.56, 0.19]} />
+          <B g={CYL} c={P.trim} p={[0, 0.92, 0]} s={[0.24, 0.05, 0.195]} />
+          <B c={P.robe} p={[0, 1.5, 0]} s={[0.27, 0.1, 0.18]} />
+          <B c={P.robe} p={[0, 1.56, -0.11]} s={[0.16, 0.11, 0.1]} />
+          {[-1, 1].map((sx) => (
+            <B key={sx} g={CYL} c="#f4f4f2" p={[0.045 * sx, 1.36, 0.19]} s={[0.006, 0.14, 0.006]} />
+          ))}
+          <mesh geometry={PLANE} material={hoodiePrintMat()} position={[0, 1.24, 0.192]} scale={[0.34, 0.17, 1]} />
+          {/* Labubu keychain hanging off his right belt loop */}
+          <group position={[-0.19, 0.93, 0.08]}>
+            <B g={TORUS} c="#c9ced6" o={{ metalness: 0.9, roughness: 0.25 }} s={[0.02, 0.02, 0.02]} />
+            <group ref={keychain}>
+              <B g={CYL} c="#c9ced6" o={{ metalness: 0.9, roughness: 0.25 }} p={[0, -0.04, 0]} s={[0.004, 0.06, 0.004]} />
+              <Labubu fur="#ff8fc7" expression="happy" shirt="yale" height={0.24} position={[0, -0.32, 0]} noBrawl />
+            </group>
+          </group>
+        </>
+      ) : (
+        <>
+          {/* robe + torso */}
+          <mesh geometry={new THREE.CylinderGeometry(0.2 * wide, 0.36 * wide, 1.22, 28)} material={sleeve} position={[0, 0.61, 0]} />
+          <B g={CYL} c={P.trim} p={[0, 0.03, 0]} s={[0.365 * wide, 0.06, 0.365 * wide]} />
+          <B g={CYL} c={P.robe} p={[0, 1.36, 0]} s={[0.205 * wide, 0.3, 0.19 * wide]} />
+          <B c={P.robe} p={[0, 1.5, 0]} s={[0.27 * wide, 0.1, 0.18 * wide]} />
+          <B g={BOX} c={P.trim} p={[0, 1.3, 0.19 * wide]} s={[0.06, 0.38, 0.01]} />
+        </>
+      )}
       <B g={CYL} c={P.skin} p={[0, 1.57, 0]} s={[0.05, 0.08, 0.05]} />
       {/* left arm hangs; right arm holds the wand */}
       <group position={[0.26 * wide, 1.46, 0]} rotation={[0.1, 0, 0.18]}>
         <mesh geometry={CAP} material={sleeve} position={[0, -0.24, 0]} scale={[0.065, 0.2, 0.065]} />
+        {casual && <B g={CYL} c={P.trim} p={[0, -0.43, 0]} s={[0.07, 0.04, 0.07]} />}
         <mesh geometry={SPH} material={hand} position={[0, -0.5, 0.02]} scale={[0.045, 0.055, 0.04]} />
         {who === 'trelawney' && (
           <B c="#bfe3ff" o={{ transparent: true, opacity: 0.7, emissive: '#7fb2ff', emissiveIntensity: 0.6, roughness: 0.05 }} p={[0, -0.55, 0.12]} s={[0.11, 0.11, 0.11]} />
@@ -269,7 +374,8 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
       <group ref={wandArm} position={[-0.26 * wide, 1.46, 0]}>
         <mesh geometry={CAP} material={sleeve} position={[0, -0.24, 0]} scale={[0.065, 0.2, 0.065]} />
         <mesh geometry={SPH} material={hand} position={[0, -0.5, 0.02]} scale={[0.045, 0.055, 0.04]} />
-        {who !== 'hagrid' && (
+        {casual && <B g={CYL} c={P.trim} p={[0, -0.43, 0]} s={[0.07, 0.04, 0.07]} />}
+        {who !== 'hagrid' && !casual && (
           <>
             <B g={CYL} c="#3b2617" p={[0, -0.5, 0.18]} r={[Math.PI / 2, 0, 0]} s={[0.009, 0.32, 0.009]} />
             <mesh geometry={SPH} material={glow} position={[0, -0.5, 0.34]} scale={0.018} />

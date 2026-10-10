@@ -71,7 +71,7 @@ export const DRUMS = [
   { id: '2410', course: 'mgt404', name: 'Bewkes Classroom', c: [-14.5, 31.4], rx: 6, rz: 6.5, front: [0, -1] },
   { id: '2420', course: 'mgt403', name: 'Betts Classroom', c: [0, 31.4], rx: 6, rz: 6.5, front: [0, -1] },
   { id: '2430', course: 'mgt887', name: 'Baker Classroom', c: [14.5, 31.4], rx: 6, rz: 6.5, front: [0, -1] },
-  { id: '2200', course: 'mgt402', name: 'Blumetti Classroom', c: [-31, -28.4], rx: 7.5, rz: 7.5, front: [1, 1] },
+  { id: '2200', course: 'mgt409z', name: 'Blumetti Classroom', c: [-31, -28.4], rx: 7.5, rz: 7.5, front: [1, 1] },
   { id: '2210', course: 'mgt538', name: 'Allison Foundation Classroom', c: [-14.5, -31.4], rx: 6, rz: 6.5, front: [0, 1] },
   { id: '2220', course: 'mgt800', name: 'Jones Classroom', c: [0, -31.4], rx: 6, rz: 6.5, front: [0, 1] },
   { id: '2230', course: 'mgt541', name: 'Nooyi Classroom', c: [14.5, -31.4], rx: 6, rz: 6.5, front: [0, 1] },

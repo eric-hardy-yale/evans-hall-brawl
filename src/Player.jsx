@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { EYE, MAX_STEP, SPAWN } from './layout.js'
 import { LEVELS, STAIR_DOORS, STAIR_TRIGGER_R } from './levels.js'
+import { TALKABLES } from './talk.js'
 
 const CROUCH_EYE = 1.05
 const JUMP_SPEED = 4.2
@@ -13,7 +14,8 @@ const LOOK_SPEED = 0.005 // radians per touch pixel
 // PC controls work like a shooter: WASD move, mouse look, Shift sprint, Space jump, C crouch.
 // Touch controls come in through touchRef: { active, move: [x, y], look: [dx, dy], jump }.
 // Floors: walk into a stairwell opening, press 1 / 2, or set floorReq.current (the on-screen button).
-export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, onWhere, onLevel }) {
+// Talking: aim the crosshair at an AI avatar (talk.js) within 8 m and click; onHover/onTalk report it.
+export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, onWhere, onLevel, onHover, onTalk }) {
   const { camera, gl } = useThree()
   const controls = useMemo(() => new PointerLockControls(camera, gl.domElement), [camera, gl])
   const keys = useRef({})
@@ -26,12 +28,21 @@ export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, on
   const jumpY = useRef(0)
   const vy = useRef(0)
   const fwd = useMemo(() => new THREE.Vector3(), [])
+  const ray = useMemo(() => {
+    const r = new THREE.Raycaster()
+    r.far = 8
+    return r
+  }, [])
+  const center = useMemo(() => new THREE.Vector2(0, 0), [])
+  const hover = useRef(null)
+  const frameN = useRef(0)
   const euler = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), [])
 
   useEffect(() => {
     camera.position.set(SPAWN.x, EYE, SPAWN.z)
     camera.rotation.set(0, 0, 0)
     lockRef.current = () => controls.lock()
+    lockRef.unlock = () => controls.unlock()
     const on = () => onLock(true)
     const off = () => {
       keys.current = {} // keys held during Esc never get a keyup
@@ -39,13 +50,20 @@ export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, on
     }
     controls.addEventListener('lock', on)
     controls.addEventListener('unlock', off)
+    const typing = (e) => e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')
     const down = (e) => {
+      if (typing(e)) return // keys typed in the chat box don't move you
       keys.current[e.code] = true
       if (e.code === 'Space') e.preventDefault()
       if (e.code === 'Digit1' || e.code === 'Numpad1') floorReq.current = 1
       if (e.code === 'Digit2' || e.code === 'Numpad2') floorReq.current = 2
     }
     const up = (e) => (keys.current[e.code] = false)
+    // click while aiming at someone (mouse locked) opens the chat
+    const click = (e) => {
+      if (e.button === 0 && controls.isLocked && hover.current) onTalk(hover.current)
+    }
+    window.addEventListener('mousedown', click)
     const blur = () => (keys.current = {})
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -57,8 +75,9 @@ export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, on
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
+      window.removeEventListener('mousedown', click)
     }
-  }, [camera, controls, lockRef, onLock, floorReq])
+  }, [camera, controls, lockRef, onLock, floorReq, onTalk])
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 0.05)
@@ -151,6 +170,30 @@ export default function Player({ lockRef, mapRef, touchRef, floorReq, onLock, on
     const fy = LEVELS[level.current].floorAt(camera.position.x, camera.position.z)
     floorY.current += (fy - floorY.current) * Math.min(1, dt * 14) // smooth step up/down
     camera.position.y = devY.current ?? floorY.current + eye.current + jumpY.current
+
+    // who's under the crosshair? (every ~6 frames)
+    if (++frameN.current % 6 === 0) {
+      let id = null
+      if (TALKABLES.size) {
+        ray.setFromCamera(center, camera)
+        const hit = ray.intersectObjects([...TALKABLES], true)[0]
+        for (let o = hit?.object; o; o = o.parent)
+          if (o.userData.talkId) {
+            id = o.userData.talkId
+            break
+          }
+      }
+      if (id !== hover.current) {
+        hover.current = id
+        onHover(id)
+      }
+    }
+    // dev helper: document.body.dataset.talk = "zaman" opens the chat without pointer lock
+    if (import.meta.env.DEV && document.body.dataset.talk) {
+      const id = document.body.dataset.talk
+      delete document.body.dataset.talk
+      onTalk(id)
+    }
 
     if (import.meta.env.DEV) document.body.dataset.pos = `${camera.position.x.toFixed(2)},${camera.position.z.toFixed(2)},${fwd.x.toFixed(2)},${fwd.z.toFixed(2)}|${touch.move.map((v) => v.toFixed(2))}`
     mapRef.current?.(camera.position.x, camera.position.z, fwd.x, fwd.z)
