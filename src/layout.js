@@ -1,4 +1,4 @@
-// Evans Hall, floor 2. Units are meters.
+// Evans Hall, floor 2. Units are meters. (Floor 1 lives in ground.js.)
 // World axes: +x = east, -z = north (three.js camera looks -z by default = north).
 // Read from reference/floorplan (plan is drawn with west at the top).
 
@@ -287,17 +287,21 @@ W([-CW, 6], [-CW, 8], 'orange', { h: 0.55, t: 0.9 })
 for (const p of PLANTS) dot(p)
 
 // colliders with bounding boxes for fast rejection
-export const COLLIDERS = WALLS.filter((w) => w.collide).map((w) => ({
-  ...w,
-  minx: Math.min(w.a[0], w.b[0]),
-  maxx: Math.max(w.a[0], w.b[0]),
-  minz: Math.min(w.a[1], w.b[1]),
-  maxz: Math.max(w.a[1], w.b[1]),
-}))
+export const toColliders = (walls) =>
+  walls.filter((w) => w.collide).map((w) => ({
+    ...w,
+    minx: Math.min(w.a[0], w.b[0]),
+    maxx: Math.max(w.a[0], w.b[0]),
+    minz: Math.min(w.a[1], w.b[1]),
+    maxz: Math.max(w.a[1], w.b[1]),
+  }))
+export const COLLIDERS = toColliders(WALLS)
 
-export function collide(pos) {
+export const collide = (pos) => collideWith(COLLIDERS, pos)
+
+export function collideWith(colliders, pos) {
   for (let it = 0; it < 3; it++) {
-    for (const s of COLLIDERS) {
+    for (const s of colliders) {
       const rr = R_PLAYER + s.t / 2
       if (pos.x < s.minx - rr || pos.x > s.maxx + rr || pos.z < s.minz - rr || pos.z > s.maxz + rr) continue
       const dx = s.b[0] - s.a[0]

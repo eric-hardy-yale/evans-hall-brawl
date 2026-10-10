@@ -11,89 +11,16 @@ import LabubuParty, { MeetingLabubus } from './LabubuParty.jsx'
 import LabubuCrowd from './LabubuCrowd.jsx'
 import Faculty from './Faculty.jsx'
 import HandsomeDan from './HandsomeDan.jsx'
-import { COURSE_KEYS, slideTex } from './slides.js'
+import GroundFloor from './GroundFloor.jsx'
+import { COURT_TABLES, COURT_TREES, G, H1 } from './ground.js'
+import { COURSE_KEYS } from './slides.js'
+import { BOX, Instanced, Plane, SPHERE, ribbon, slideMat, wallItems } from './parts.jsx'
 import { rng } from './textures.js'
 
-const TAU = Math.PI * 2
-
-// ---------- helpers
-function Instanced({ items, material, geometry }) {
-  const ref = useRef()
-  useLayoutEffect(() => {
-    const m = new THREE.Matrix4()
-    const q = new THREE.Quaternion()
-    const e = new THREE.Euler()
-    const p = new THREE.Vector3()
-    const s = new THREE.Vector3()
-    items.forEach((it, i) => {
-      p.set(...it.p)
-      e.set(0, it.r || 0, 0)
-      q.setFromEuler(e)
-      s.set(...(it.s || [1, 1, 1]))
-      m.compose(p, q, s)
-      ref.current.setMatrixAt(i, m)
-    })
-    ref.current.instanceMatrix.needsUpdate = true
-  }, [items])
-  if (!items.length) return null
-  return <instancedMesh ref={ref} args={[geometry, material, items.length]} frustumCulled={false} />
-}
-
-const BOX = new THREE.BoxGeometry(1, 1, 1)
-const slideMats = new Map()
-const slideMat = (course, kind) => {
-  const k = `${course}-${kind}`
-  if (!slideMats.has(k)) slideMats.set(k, new THREE.MeshBasicMaterial({ map: slideTex(course, kind), toneMapped: false }))
-  return slideMats.get(k)
-}
-
-function wallItems(mat) {
-  return WALLS.filter((w) => w.mat === mat).map((w) => {
-    const dx = w.b[0] - w.a[0]
-    const dz = w.b[1] - w.a[1]
-    return {
-      p: [(w.a[0] + w.b[0]) / 2, w.y0 + w.h / 2, (w.a[1] + w.b[1]) / 2],
-      r: -Math.atan2(dz, dx),
-      s: [Math.max(Math.hypot(dx, dz), 0.01) + 0.02, w.h, w.t],
-    }
-  })
-}
-
-// vertical strip along a closed polyline
-function ribbon(points, y0, y1, uPerMeter = 0.25) {
-  const pts = [...points, points[0]]
-  const pos = []
-  const uv = []
-  const idx = []
-  let u = 0
-  pts.forEach((p, i) => {
-    if (i > 0) u += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) * uPerMeter
-    pos.push(p[0], y0, p[1], p[0], y1, p[1])
-    uv.push(u, 0, u, 1)
-    if (i > 0) {
-      const a = (i - 1) * 2
-      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3)
-    }
-  })
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
-  g.setIndex(idx)
-  g.computeVertexNormals()
-  return g
-}
 
 function Arc({ c, rx, rz = rx, a0, a1, y0 = 0, h = H, material }) {
   const geo = useMemo(() => new THREE.CylinderGeometry(1, 1, h, 72, 1, true, a0, a1 - a0), [h, a0, a1])
   return <mesh geometry={geo} material={material} position={[c[0], y0 + h / 2, c[1]]} scale={[rx, 1, rz]} />
-}
-
-function Plane({ p, rot = 0, w, h, material }) {
-  return (
-    <mesh position={p} rotation={[0, rot, 0]} material={material}>
-      <planeGeometry args={[w, h]} />
-    </mesh>
-  )
 }
 
 // ---------- materials
@@ -129,7 +56,6 @@ function useMaterials() {
       ceiling: std({ color: '#f7f5f0', roughness: 1, side: THREE.DoubleSide }),
       lawn: std({ map: T.lawnTex(), roughness: 1 }),
       ground: std({ color: '#2b3a26', roughness: 1 }),
-      cafe: std({ map: T.windowsTex(true), emissive: '#ffffff', emissiveMap: T.windowsTex(true), emissiveIntensity: 0.6, side: THREE.DoubleSide }),
       upper: std({ map: T.windowsTex(false), emissive: '#ffffff', emissiveMap: T.windowsTex(false), emissiveIntensity: 0.35, side: THREE.DoubleSide }),
       mural: std({ map: T.muralTex(), roughness: 0.9, side: THREE.DoubleSide }),
       velvet: std({ color: '#0d0b10', roughness: 1 }),
@@ -148,6 +74,11 @@ function useMaterials() {
       leaf: std({ color: '#3f7a35', roughness: 0.9 }),
       lamp: new THREE.MeshBasicMaterial({ color: '#fffaf0' }),
       column: std({ color: '#eceae6', roughness: 0.6 }),
+      slabEdge: std({ color: '#e4e1db', roughness: 0.9, side: THREE.DoubleSide }),
+      audSeat: std({ color: '#1a3f73', roughness: 0.9 }),
+      stage: std({ map: T.teakTex(), roughness: 0.5 }),
+      stone1: std({ map: T.stoneTex([0.35, 0.35]), roughness: 0.9 }),
+      pingpong: std({ map: T.pingPongTex(), roughness: 0.6 }),
     }
   }, [])
 }
@@ -206,29 +137,21 @@ function FloorAndCeiling({ M }) {
 
 function Courtyard({ M }) {
   const glass = useMemo(() => ribbon(COURTYARD, 0, H), [])
-  const cafe = useMemo(() => ribbon(COURTYARD, -5, 0), [])
+  const glass1 = useMemo(() => ribbon(COURTYARD, G, G + H1), []) // floor 1 courtyard glass
+  const slab = useMemo(() => ribbon(COURTYARD, G + H1, 0), [])
   const upper = useMemo(() => ribbon(COURTYARD, H, H + 9, 0.12), [])
   const mullions = useMemo(
     () => COURTYARD.filter((_, i) => i % 6 === 0).map(([x, z]) => ({ p: [x, H / 2, z], s: [0.07, H, 0.07] })),
     [],
   )
-  const trees = useMemo(() => {
-    const spots = [[-10, -9], [0, -11.5], [10, -8.5], [-12, 3], [12, 4], [-5, 11], [7, 11.5], [-2, 1]]
-    return spots
-  }, [])
-  const cafeTables = useMemo(() => {
-    const r = rng(4)
-    const out = []
-    for (let i = 0; i < 14; i++) {
-      const a = r() * TAU
-      out.push({ p: [Math.sin(a) * 12, -4.6, Math.cos(a) * 14], s: [0.9, 0.06, 0.9] })
-    }
-    return out
-  }, [])
+  const trees = COURT_TREES
+  const cafeTables = useMemo(() => COURT_TABLES.map(([x, z]) => ({ p: [x, G + 0.74, z], s: [0.9, 0.05, 0.9] })), [])
+  const tableLegs = useMemo(() => COURT_TABLES.map(([x, z]) => ({ p: [x, G + 0.37, z], s: [0.07, 0.74, 0.07] })), [])
   return (
     <>
       <mesh geometry={glass} material={M.glass} />
-      <mesh geometry={cafe} material={M.cafe} />
+      <mesh geometry={glass1} material={M.glass} />
+      <mesh geometry={slab} material={M.slabEdge} />
       <mesh geometry={upper} material={M.upper} />
       <Instanced items={mullions} material={M.mullion} geometry={BOX} />
       <Instanced items={trees.map(([x, z]) => ({ p: [x, -3.5, z], s: [0.35, 3, 0.35] }))} material={M.trunk} geometry={BOX} />
@@ -238,11 +161,11 @@ function Courtyard({ M }) {
         geometry={SPHERE}
       />
       <Instanced items={cafeTables} material={M.board} geometry={BOX} />
+      <Instanced items={tableLegs} material={M.mullion} geometry={BOX} />
       <LabubuParty />
     </>
   )
 }
-const SPHERE = new THREE.SphereGeometry(1, 14, 10)
 
 function OutsideTrees({ M }) {
   const items = useMemo(() => {
@@ -271,7 +194,7 @@ function OutsideTrees({ M }) {
 // ---------- walls (instanced by material)
 const WALL_MATS = ['white', 'sage', 'exterior', 'libGlass', 'beinGlass', 'meetGlass', 'slats', 'desk', 'shelf', 'leather', 'orange']
 function Walls({ M }) {
-  const groups = useMemo(() => WALL_MATS.map((m) => [m, wallItems(m)]), [])
+  const groups = useMemo(() => WALL_MATS.map((m) => [m, wallItems(WALLS, m)]), [])
   return groups.map(([m, items]) => <Instanced key={m} items={items} material={M[m]} geometry={BOX} />)
 }
 
@@ -411,27 +334,27 @@ function Beinecke({ M }) {
   )
 }
 
-// ---------- stairwells with paintings above
-function Stairs({ M }) {
+// ---------- stairwells with paintings above (the same cores on both floors)
+function Stairs({ M, y = 0, seedOffset = 0 }) {
   const mats = useMemo(() => {
     return STAIRS.map((s) => {
-      if (s.photo) {
+      if (s.photo && !seedOffset) {
         const t = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}art/stair-g.jpg`)
         t.colorSpace = THREE.SRGBColorSpace
         t.repeat.set(215 / 1200, 282 / 1600)
         t.offset.set(450 / 1200, 1 - 797 / 1600)
         return new THREE.MeshBasicMaterial({ map: t })
       }
-      return new THREE.MeshBasicMaterial({ map: T.paintingTex(s.seed) })
+      return new THREE.MeshBasicMaterial({ map: T.paintingTex((s.seed ?? 7) + seedOffset) })
     })
-  }, [])
+  }, [seedOffset])
   return STAIRS.map((s, i) => {
     const ext = s.face[0] !== 0 ? s.w / 2 : s.d / 2
     const off = ext + 0.12
     const p = [s.c[0] + s.face[0] * off, s.c[1] + s.face[1] * off]
     const rot = Math.atan2(s.face[0], s.face[1])
     return (
-      <group key={s.id}>
+      <group key={s.id} position={[0, y, 0]}>
         <Plane p={[p[0], 1.2, p[1]]} w={1.8} h={2.4} rot={rot} material={M.opening} />
         <Plane p={[p[0] + s.face[0] * 0.01, 2.5, p[1] + s.face[1] * 0.01]} w={0.5} h={0.18} rot={rot} material={M.exit} />
         <mesh position={[p[0], 3.5, p[1]]} rotation={[0, rot, 0]} material={M.dark}>
@@ -552,6 +475,8 @@ export default function World() {
       <ClassroomStuff M={M} />
       <Beinecke M={M} />
       <Stairs M={M} />
+      <Stairs M={M} y={G} seedOffset={10} />
+      <GroundFloor M={M} />
       <Details M={M} />
       <LabubuCrowd />
       <Faculty />

@@ -1,6 +1,7 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { BRAWL, FIGHTERS } from './brawl.js'
 
 // A Labubu built from primitives (no model files).
 // Customize with props:
@@ -15,6 +16,7 @@ import * as THREE from 'three'
 //   sitting     true → legs stick forward (put the root on a chair seat)
 //   height      meters (default 1)
 //   phase       animation offset so a crowd doesn't move in sync
+// In brawl mode (brawl.js) every Labubu ignores its anim, pulls a knife, and stabs at the nearest Labubu.
 
 export const SKIN = '#f3c9a5'
 export const YALE_BLUE = '#00356b'
@@ -233,6 +235,8 @@ export const shirtTex = (kind) =>
 // ---------- materials, cached by color
 const mat = (key, make) => once(`m-${key}`, make)
 const furMat = (c) => mat(`fur-${c}`, () => new THREE.MeshStandardMaterial({ color: c, map: furTex(), bumpMap: furTex(), bumpScale: 2, roughness: 1 }))
+const bloodMat = () => mat('blood', () => new THREE.MeshStandardMaterial({ color: '#8f0a0a', roughness: 0.25, metalness: 0.1 }))
+const bladeMat = () => mat('blade', () => new THREE.MeshStandardMaterial({ color: '#d7dde4', metalness: 0.9, roughness: 0.2 }))
 const plainMat = (c, rough = 0.8) => mat(`plain-${c}-${rough}`, () => new THREE.MeshStandardMaterial({ color: c, roughness: rough }))
 const skinMat = () => plainMat(SKIN, 0.55)
 const faceMat = (e) => mat(`face-${e}`, () => new THREE.MeshStandardMaterial({ map: faceTex(e), roughness: 0.5 }))
@@ -286,18 +290,58 @@ export default function Labubu({
   const hatM = hat ? plainMat(hat === 'bucket' ? '#e9dfc8' : hat, 0.95) : null
   const dark = plainMat('#3a2416', 0.6)
   const gold = useMemo(() => mat('gold', () => new THREE.MeshStandardMaterial({ color: '#c9a44a', metalness: 0.8, roughness: 0.3 })), [])
+  const blood = bloodMat()
+  const blade = bladeMat()
+  const gore = useRef() // splatter, only shown while brawling
+  const knife = useRef()
+  const me = useMemo(() => ({ pos: new THREE.Vector3() }), [])
+  useEffect(() => {
+    FIGHTERS.add(me)
+    return () => FIGHTERS.delete(me)
+  }, [me])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, dt) => {
     const t = clock.elapsedTime + phase
     const b = body.current
     if (!b) return
-    b.position.y = 0
+    b.position.set(0, 0, 0)
     b.rotation.set(0, 0, 0)
     b.scale.set(1, 1, 1)
     armL.current.rotation.set(0, 0, 0.55)
     armR.current.rotation.set(0, 0, -0.55)
+    root.current.getWorldPosition(me.pos)
+    gore.current.visible = BRAWL.on
+    knife.current.visible = BRAWL.on
+    if (!BRAWL.on && !(anim === 'circle' && circle)) root.current.rotation.y = rotation // face forward again after a brawl
     const breathe = 1 + Math.sin(t * 2) * 0.015
-    if (anim === 'hop') {
+    if (BRAWL.on) {
+      // turn toward the nearest other Labubu, then wind up, stab, recoil
+      let best = null
+      let bd = 5
+      for (const f of FIGHTERS) {
+        if (f === me) continue
+        const d = Math.hypot(f.pos.x - me.pos.x, f.pos.z - me.pos.z)
+        if (d < bd) {
+          bd = d
+          best = f
+        }
+      }
+      if (best) {
+        const want = Math.atan2(best.pos.x - me.pos.x, best.pos.z - me.pos.z)
+        let diff = want - root.current.rotation.y
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff))
+        root.current.rotation.y += diff * Math.min(1, dt * 6)
+      }
+      const u = ((t * 1.3) % 1 + 1) % 1
+      const strike = u > 0.55 && u < 0.72
+      const wind = Math.min(1, u / 0.55)
+      armR.current.rotation.set(strike ? -1.45 : -0.4 - wind * 2.4, 0, -0.3)
+      armL.current.rotation.set(-0.9, 0, 0.9) // guard up
+      b.rotation.x = strike ? 0.28 : -0.12 * wind
+      b.position.z = strike ? 0.1 : 0
+      b.position.y = sitting ? 0 : Math.abs(Math.sin(t * 7)) * 0.04
+      if (u > 0.85) b.rotation.z = Math.sin(t * 40) * 0.08 // flinch from the counter-stab
+    } else if (anim === 'hop') {
       const h = Math.abs(Math.sin(t * 3.2))
       b.position.y = h * 0.35
       b.scale.set(1 + (1 - h) * 0.08, 1 - (1 - h) * 0.1, 1 + (1 - h) * 0.08)
@@ -378,8 +422,23 @@ export default function Labubu({
             <mesh geometry={G.limb} material={F} position={[0, -0.09, 0]} scale={[0.045, 0.06, 0.045]} />
             {shirtM && <mesh geometry={G.cyl} material={shirtM} position={[0, -0.04, 0]} scale={[0.056, 0.07, 0.056]} />}
             <Ball p={[0, -0.18, 0.01]} s={[0.04, 0.045, 0.035]} m={S} />
+            {side < 0 && (
+              <group ref={knife}>
+                <mesh geometry={G.box} material={dark} position={[0, -0.21, 0.02]} scale={[0.024, 0.07, 0.024]} />
+                <mesh geometry={G.box} material={blade} position={[0, -0.32, 0.02]} scale={[0.012, 0.15, 0.032]} />
+                <Ball p={[0, -0.36, 0.035]} s={[0.012, 0.03, 0.01]} m={blood} />
+              </group>
+            )}
           </group>
         ))}
+        {/* splatter on the shirt, face, and a puddle at the feet */}
+        <group ref={gore}>
+          <Ball p={[0.07, 0.4, 0.17]} s={[0.07, 0.05, 0.02]} m={blood} />
+          <Ball p={[-0.05, 0.3, 0.17]} s={[0.04, 0.06, 0.02]} m={blood} />
+          <Ball p={[-0.09, 0.66, 0.22]} s={[0.045, 0.03, 0.015]} m={blood} />
+          <Ball p={[0.1, 0.78, 0.19]} s={[0.03, 0.025, 0.012]} m={blood} />
+          <Ball p={[0.06, sitting ? -0.5 : 0.005, 0.18]} s={[0.32, 0.006, 0.25]} m={blood} />
+        </group>
         {/* head: fur hood, face, ears */}
         <group position={[0, 0.7, 0]}>
           <Ball p={[0, 0, 0]} s={[0.27, 0.25, 0.25]} m={F} />

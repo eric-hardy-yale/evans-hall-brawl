@@ -76,6 +76,34 @@ body,
   z-index: 5;
 }
 
+.floorbtn {
+  position: fixed;
+  right: 16px;
+  top: 54px;
+  background: var(--pink);
+  color: var(--black);
+  border: 1px solid var(--pink);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.brawlbtn {
+  top: 92px;
+  background: var(--black);
+  color: var(--pink);
+}
+
+.where .floor {
+  color: var(--black);
+  background: var(--pink);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
 .crosshair {
   position: fixed;
   left: 50%;

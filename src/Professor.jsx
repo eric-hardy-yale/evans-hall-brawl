@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { BRAWL } from './brawl.js'
 
 // Cartoon wizard professors built from primitives. Each preset sets robe, hair, beard, hat,
 // glasses, size, and a prop; the shared body handles the robe, head, arms and wand.
@@ -222,11 +223,24 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
   const glow = useMemo(() => m('#ffd6ea', { emissive: '#ff4fa3', emissiveIntensity: 2 }), [])
   useFrame(({ clock }) => {
     const t = clock.elapsedTime + phase
+    gore.current.visible = BRAWL.on
+    if (BRAWL.on) {
+      // stabbing with the wand, twice as fast, lunging into it
+      const u = (t * 1.6) % 1
+      const strike = u > 0.55 && u < 0.72
+      root.current.rotation.y = rotation + Math.sin(t * 1.1) * 0.6
+      root.current.rotation.x = strike ? 0.12 : 0
+      wandArm.current.rotation.x = strike ? -1.5 : -0.3 - (u / 0.55) * 2.2
+      wandArm.current.rotation.z = -0.2
+      return
+    }
+    root.current.rotation.x = 0
     root.current.rotation.y = rotation + Math.sin(t * 0.4) * 0.35 // scanning the room
     const flick = Math.max(0, Math.sin(t * 1.3)) // raise the wand every few seconds
     wandArm.current.rotation.x = -0.3 - flick * 1.4
     wandArm.current.rotation.z = -0.25 - flick * 0.3
   })
+  const gore = useRef()
   const sleeve = m(P.robe)
   const hand = m(P.skin)
   return (
@@ -255,6 +269,13 @@ export default function Professor({ who, position = [0, 0, 0], rotation = 0, pha
             <mesh geometry={SPH} material={glow} position={[0, -0.5, 0.34]} scale={0.018} />
           </>
         )}
+      </group>
+      {/* brawl splatter on the robe and a puddle */}
+      <group ref={gore}>
+        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[0.08, 1.15, 0.27 * wide]} s={[0.1, 0.13, 0.02]} />
+        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[-0.12, 0.8, 0.31 * wide]} s={[0.07, 0.09, 0.02]} />
+        <B c="#8f0a0a" o={{ roughness: 0.25 }} p={[0.05, 1.66, 0.12]} s={[0.04, 0.03, 0.02]} />
+        <B g={CYL} c="#7a0808" o={{ roughness: 0.2 }} p={[0.1, 0.01, 0.55]} s={[0.55, 0.006, 0.4]} />
       </group>
       {/* head */}
       <group>

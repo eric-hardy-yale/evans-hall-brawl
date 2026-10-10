@@ -5,15 +5,20 @@ import Player from './Player.jsx'
 import Minimap from './Minimap.jsx'
 import TouchControls from './TouchControls.jsx'
 import { EYE, SPAWN } from './layout.js'
+import { BRAWL, toggleBrawl } from './brawl.js'
 
 export default function App() {
   const [locked, setLocked] = useState(false)
   const [where, setWhere] = useState('')
+  const [level, setLevel] = useState(2)
+  const floorReq = useRef(null)
   const [showMap, setShowMap] = useState(true)
+  const [brawl, setBrawl] = useState(BRAWL.on)
   const lockRef = useRef()
   const mapRef = useRef()
   const onLock = useCallback((v) => setLocked(v), [])
   const onWhere = useCallback((w) => setWhere(w), [])
+  const onLevel = useCallback((l) => setLevel(l), [])
   // phones have no pointer lock, so they get a joystick + drag-to-look instead
   const [isTouch] = useState(() => matchMedia('(pointer: coarse)').matches) // phones + tablets; touchscreen laptops still get mouse mode
   const [touchOn, setTouchOn] = useState(false)
@@ -25,7 +30,10 @@ export default function App() {
   }
   const playing = locked || touchOn
   useEffect(() => {
-    const k = (e) => e.code === 'KeyM' && setShowMap((v) => !v)
+    const k = (e) => {
+      if (e.code === 'KeyM') setShowMap((v) => !v)
+      if (e.code === 'KeyB') setBrawl(toggleBrawl())
+    }
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [])
@@ -37,18 +45,25 @@ export default function App() {
         dpr={[1, 1.75]}
       >
         <World />
-        <Player lockRef={lockRef} mapRef={mapRef} touchRef={touchRef} onLock={onLock} onWhere={onWhere} />
+        <Player lockRef={lockRef} mapRef={mapRef} touchRef={touchRef} floorReq={floorReq} onLock={onLock} onWhere={onWhere} onLevel={onLevel} />
       </Canvas>
 
       <div className="where">
         <span className="dot" />
+        <b className="floor">Floor {level}</b>
         {where}
       </div>
       <div className={showMap ? 'mapwrap' : 'mapwrap hidden'}>
-        <Minimap drawRef={mapRef} />
+        <Minimap drawRef={mapRef} level={level} />
       </div>
       <button className="maptoggle" onClick={() => setShowMap((s) => !s)}>
         {showMap ? 'hide map' : 'map'}
+      </button>
+      <button className="floorbtn" onClick={() => (floorReq.current = level === 2 ? 1 : 2)}>
+        {level === 2 ? '↓ Floor 1' : '↑ Floor 2'}
+      </button>
+      <button className="floorbtn brawlbtn" onClick={() => setBrawl(toggleBrawl())}>
+        {brawl ? 'brawl: on' : 'brawl: off'}
       </button>
       {playing && <div className="crosshair" />}
       {touchOn && <TouchControls touchRef={touchRef} onPause={() => setTouch(false)} />}
@@ -57,8 +72,11 @@ export default function App() {
         <div className="overlay" onClick={() => (isTouch ? setTouch(true) : lockRef.current?.())}>
           <div className="card">
             <div className="kicker">Yale SOM · Evans Hall</div>
-            <h1>Floor 2</h1>
-            <p className="sub">Classroom drums, the cloister, Ross Library, the Beinecke Terrace Room, and the courtyard.</p>
+            <h1>Floors 1 &amp; 2</h1>
+            <p className="sub">
+              Floor 2: classroom drums, the cloister, Ross Library, the Beinecke Terrace Room. Floor 1: Bekenstein Atrium, Zhang Auditorium,
+              the Dining Commons, and the Shen Courtyard. Walk into any stairwell door to change floors.
+            </p>
             <button className="go">{isTouch ? 'Tap to walk in' : 'Click to walk in'}</button>
             {!isTouch && (
               <button
@@ -84,6 +102,8 @@ export default function App() {
                 <span><b>Space</b> jump</span>
                 <span><b>C</b> crouch</span>
                 <span><b>M</b> map</span>
+                <span><b>1 / 2</b> floor</span>
+                <span><b>B</b> brawl {brawl ? 'off' : 'on'}</span>
                 <span><b>Esc</b> pause</span>
               </div>
             )}

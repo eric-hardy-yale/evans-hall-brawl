@@ -344,3 +344,162 @@ export function paintingTex(seed) {
   for (let i = 0; i < 30; i++) g.fillRect(112 + (i % 6) * 13, 262 + Math.floor(i / 6) * 18, 4, 4)
   return tex(c)
 }
+
+// big wall lettering: title + optional subtitle on a solid panel
+export function bannerTex(title, sub = '', { bg = '#00356b', fg = '#ffffff', w = 1024, h = 192 } = {}) {
+  const [c, g] = canvas(w, h)
+  g.fillStyle = bg
+  g.fillRect(0, 0, w, h)
+  g.fillStyle = fg
+  g.textAlign = 'center'
+  g.font = `600 ${Math.round(h * (sub ? 0.36 : 0.46))}px Georgia, serif`
+  g.fillText(title, w / 2, sub ? h * 0.5 : h * 0.64)
+  if (sub) {
+    g.globalAlpha = 0.8
+    g.font = `${Math.round(h * 0.17)}px Georgia, serif`
+    g.fillText(sub, w / 2, h * 0.8)
+    g.globalAlpha = 1
+  }
+  return tex(c)
+}
+
+// chalkboard-style menu for the servery and café
+export function menuTex(title, items, seed = 1) {
+  const [c, g] = canvas(512, 384)
+  g.fillStyle = '#1f2421'
+  g.fillRect(0, 0, 512, 384)
+  g.strokeStyle = '#c9a44a'
+  g.lineWidth = 6
+  g.strokeRect(10, 10, 492, 364)
+  g.fillStyle = '#f3dfa8'
+  g.font = 'bold 44px Georgia, serif'
+  g.textAlign = 'center'
+  g.fillText(title, 256, 66)
+  g.textAlign = 'left'
+  g.font = '26px Georgia, serif'
+  const r = rng(seed)
+  items.forEach((it, i) => {
+    g.fillStyle = '#f1f1f1'
+    g.fillText(it, 40, 120 + i * 44)
+    g.fillStyle = '#9fd6a8'
+    g.fillText(`$${(4 + r() * 9).toFixed(2)}`, 400, 120 + i * 44)
+  })
+  return tex(c)
+}
+
+// ping-pong table top: green with white lines
+export function pingPongTex() {
+  const [c, g] = canvas(274, 152)
+  g.fillStyle = '#1f5c3a'
+  g.fillRect(0, 0, 274, 152)
+  g.strokeStyle = '#ffffff'
+  g.lineWidth = 3
+  g.strokeRect(2, 2, 270, 148)
+  g.beginPath()
+  g.moveTo(0, 76)
+  g.lineTo(274, 76)
+  g.stroke()
+  return tex(c)
+}
+
+// glass-front fridge full of drinks
+export function coolerTex() {
+  const [c, g] = canvas(256, 256)
+  g.fillStyle = '#dfe9ee'
+  g.fillRect(0, 0, 256, 256)
+  const cols = ['#d62828', '#2a9d8f', '#f4a261', '#3a86ff', '#e9c46a', '#8338ec', '#ffffff']
+  const r = rng(31)
+  for (let row = 0; row < 4; row++) {
+    g.fillStyle = '#9aa7b0'
+    g.fillRect(0, 60 + row * 62, 256, 4)
+    for (let x = 8; x < 248; x += 16) {
+      g.fillStyle = cols[Math.floor(r() * cols.length)]
+      g.fillRect(x, 22 + row * 62, 11, 38)
+    }
+  }
+  g.strokeStyle = '#555'
+  g.lineWidth = 4
+  for (const x of [2, 128, 254]) {
+    g.beginPath()
+    g.moveTo(x, 0)
+    g.lineTo(x, 256)
+    g.stroke()
+  }
+  return tex(c)
+}
+
+// vending machine front: lit rows of snacks + a keypad
+export function vendingTex(seed = 1) {
+  const [c, g] = canvas(192, 320)
+  g.fillStyle = '#b3121f'
+  g.fillRect(0, 0, 192, 320)
+  g.fillStyle = '#f2f6f8'
+  g.fillRect(12, 12, 124, 270)
+  const r = rng(40 + seed)
+  for (let row = 0; row < 6; row++)
+    for (let x = 18; x < 128; x += 22) {
+      g.fillStyle = `hsl(${Math.floor(r() * 360)}, 70%, 55%)`
+      g.fillRect(x, 22 + row * 44, 16, 28)
+    }
+  g.fillStyle = '#111'
+  g.fillRect(146, 60, 34, 70)
+  g.fillStyle = '#7fd6ff'
+  g.fillRect(150, 66, 26, 12)
+  g.fillStyle = '#111'
+  g.fillRect(146, 290, 34, 20)
+  return tex(c)
+}
+
+// lobby directory kiosk: today's events
+export function kioskTex() {
+  const [c, g] = canvas(256, 448)
+  g.fillStyle = '#00356b'
+  g.fillRect(0, 0, 256, 448)
+  g.fillStyle = '#ffffff'
+  g.font = 'bold 30px Georgia, serif'
+  g.fillText('Today at SOM', 18, 48)
+  g.font = '19px system-ui, sans-serif'
+  const rows = [
+    ['8:30', 'MGT 409 · 2400'],
+    ['10:05', 'Career Fair · Atrium'],
+    ['12:00', 'Lunch talk · Zhang'],
+    ['1:00', 'Club fair · Courtyard'],
+    ['4:10', 'Speaker series · Zhang'],
+    ['6:00', 'Labubu mixer · Commons'],
+  ]
+  rows.forEach(([t, what], i) => {
+    g.fillStyle = '#ffd76a'
+    g.fillText(t, 18, 100 + i * 52)
+    g.fillStyle = '#ffffff'
+    g.fillText(what, 80, 100 + i * 52)
+  })
+  g.fillStyle = '#ff4fa3'
+  g.fillRect(18, 410, 220, 6)
+  return tex(c)
+}
+
+// restroom door sign
+export function restroomTex() {
+  const [c, g] = canvas(128, 160)
+  g.fillStyle = '#2a2a2e'
+  g.fillRect(0, 0, 128, 160)
+  g.fillStyle = '#f1f1f1'
+  for (const [x, dress] of [[38, false], [90, true]]) {
+    g.beginPath()
+    g.arc(x, 34, 11, 0, Math.PI * 2)
+    g.fill()
+    if (dress) {
+      g.beginPath()
+      g.moveTo(x, 50)
+      g.lineTo(x - 18, 100)
+      g.lineTo(x + 18, 100)
+      g.fill()
+    } else g.fillRect(x - 12, 50, 24, 50)
+    g.fillRect(x - 9, 100, 7, 26)
+    g.fillRect(x + 2, 100, 7, 26)
+  }
+  g.font = '18px Georgia, serif'
+  g.textAlign = 'center'
+  g.fillText('Restroom', 64, 150)
+  return tex(c)
+}
